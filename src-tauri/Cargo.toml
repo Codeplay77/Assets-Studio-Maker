@@ -1,0 +1,19 @@
+[package]
+name = "assets-studio-maker"
+version = "0.1.0"
+description = "Editor de assets 3D por blocos para quem está começando a criar jogos."
+authors = ["CodePlay77"]
+license = "MIT"
+edition = "2024"
+
+[lib]
+name = "assets_studio_maker_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
