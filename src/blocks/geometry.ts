@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries, toCreasedNormals } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { triangulateFace } from "../modeling/triangulate";
 import { decodeModel } from "./modelPack";
 import type {
   BlockShape,
@@ -293,6 +294,18 @@ function lumpy(
   return geometry;
 }
 
+function polygons(vertices: Vec3[], faces: number[][]): THREE.BufferGeometry {
+  const positions: number[] = [];
+  for (const face of faces) {
+    for (const triangle of triangulateFace(vertices, face)) {
+      for (const vertex of triangle) positions.push(...vertices[vertex]);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  return geometry;
+}
+
 function outline(points: Point[]): THREE.Shape {
   return new THREE.Shape(points.map(([x, y]) => new THREE.Vector2(x, y)));
 }
@@ -397,6 +410,8 @@ export function buildPrimitive(shape: Primitive): THREE.BufferGeometry {
       return extrudeProfile(shape.points, shape.depth, shape.bevel ?? 0, shape.bevelSteps ?? 1, shape.deform);
     case "slab":
       return slab(shape.points, shape.height);
+    case "polygons":
+      return polygons(shape.vertices, shape.faces);
   }
 }
 
@@ -409,14 +424,28 @@ function pieceMatrix(piece: ShapePiece): THREE.Matrix4 {
   );
 }
 
+/** Zero-area triangles (the tip of a cone) have no normal, and glTF requires unit vectors. */
+function repairNormals(geometry: THREE.BufferGeometry): void {
+  const normal = geometry.getAttribute("normal");
+  const vector = new THREE.Vector3();
+  for (let i = 0; i < normal.count; i++) {
+    vector.fromBufferAttribute(normal, i);
+    if (vector.lengthSq() < 0.25) vector.set(0, 1, 0);
+    vector.normalize();
+    normal.setXYZ(i, vector.x, vector.y, vector.z);
+  }
+}
+
 function buildPiece(piece: ShapePiece): THREE.BufferGeometry {
   // Imported models already carry their own normals and colors.
   if (piece.shape.kind === "model") return decodeModel(piece.shape);
 
   const raw = buildPrimitive(piece.shape);
-  const geometry = toCreasedNormals(raw, CREASE_ANGLE);
+  const crease = piece.shape.kind === "polygons" ? THREE.MathUtils.degToRad(piece.shape.crease) : CREASE_ANGLE;
+  const geometry = toCreasedNormals(raw, crease);
   if (geometry !== raw) raw.dispose();
   geometry.applyMatrix4(pieceMatrix(piece));
+  repairNormals(geometry);
   for (const name of Object.keys(geometry.attributes)) {
     if (name !== "position" && name !== "normal") geometry.deleteAttribute(name);
   }

@@ -25,8 +25,17 @@ interface Kit {
   keepOrigin?: boolean;
   /** For textures with real drawings (faces, banners), not smooth color ramps. */
   detailedTexture?: boolean;
+  /** Replaces a material's color, by name. Values are linear RGB. */
+  recolor?: Record<string, [number, number, number]>;
   skip?: RegExp;
 }
+
+/** The kit's foliage is turquoise; these greens read as plants to a first-time user. */
+const NATURE_GREENS: Record<string, [number, number, number]> = {
+  grass: [0.2, 0.56, 0.11],
+  leafsGreen: [0.14, 0.48, 0.1],
+  leafsDark: [0.06, 0.28, 0.08],
+};
 
 const KITS: Kit[] = [
   { id: "car-kit", folder: "car-kit/x/Models/GLB format", category: "lib_vehicles", scale: 1.6, skip: /^debris-|^wheel-/ },
@@ -34,7 +43,7 @@ const KITS: Kit[] = [
   { id: "suburban", folder: "city-kit-suburban/x/Models/GLB format", category: "lib_city", scale: 4 },
   { id: "roads", folder: "city-kit-roads/x/Models/GLB format", category: "lib_roads", scale: 8, grid: 8, gridMatch: /^(road-|tile-|bridge-)/, keepOrigin: true },
   { id: "racing", folder: "racing-kit/x/Models/glTF format", category: "lib_race", scale: 8, grid: 4, gridMatch: /^(road|grass)/, detailedTexture: true },
-  { id: "nature", folder: "nature-kit/x/Models/GLTF format", category: "lib_nature", scale: 3.2 },
+  { id: "nature", folder: "nature-kit/x/Models/GLTF format", category: "lib_nature", scale: 3.2, recolor: NATURE_GREENS },
   { id: "blocky", folder: "blocky-characters/x/Models/GLB format", category: "lib_people", scale: 0.66, detailedTexture: true },
 ];
 
@@ -54,6 +63,7 @@ interface Gltf {
   bufferViews: { buffer: number; byteOffset?: number; byteLength: number; byteStride?: number }[];
   buffers: { uri?: string; byteLength: number }[];
   materials?: {
+    name?: string;
     pbrMetallicRoughness?: { baseColorFactor?: number[]; baseColorTexture?: { index: number } };
   }[];
   textures?: { source: number }[];
@@ -147,9 +157,15 @@ interface Texture {
   sample(uv: Vector2): [number, number, number];
 }
 
-function sampler(file: string, gltf: Gltf, primitive: Primitive): Texture | ((uv: Vector2) => [number, number, number]) {
-  const pbr = gltf.materials?.[primitive.material ?? -1]?.pbrMetallicRoughness;
-  const factor = pbr?.baseColorFactor ?? [1, 1, 1, 1];
+function sampler(
+  file: string,
+  gltf: Gltf,
+  primitive: Primitive,
+  recolor: Kit["recolor"],
+): Texture | ((uv: Vector2) => [number, number, number]) {
+  const material = gltf.materials?.[primitive.material ?? -1];
+  const pbr = material?.pbrMetallicRoughness;
+  const factor = recolor?.[material?.name ?? ""] ?? pbr?.baseColorFactor ?? [1, 1, 1, 1];
   const textureIndex = pbr?.baseColorTexture?.index;
   const uri = textureIndex === undefined ? undefined : gltf.images?.[gltf.textures![textureIndex].source]?.uri;
   const image = uri ? readImage(path.join(path.dirname(file), decodeURIComponent(uri))) : null;
@@ -267,7 +283,7 @@ function nodeMatrix(node: GltfNode): Matrix4 {
   );
 }
 
-function extract(file: string, detailedTexture: boolean): Triangle[] {
+function extract(file: string, { detailedTexture, recolor }: Kit): Triangle[] {
   const { gltf, buffers } = load(file);
   const triangles: Triangle[] = [];
 
@@ -284,7 +300,7 @@ function extract(file: string, detailedTexture: boolean): Triangle[] {
         const indices = primitive.indices === undefined
           ? positions.map((_, i) => i)
           : readAccessor(gltf, buffers, primitive.indices).map(([value]) => value);
-        const source = sampler(file, gltf, primitive);
+        const source = sampler(file, gltf, primitive, recolor);
         const sample = typeof source === "function" ? source : source.sample;
 
         const corner = (i: number): Corner => ({
@@ -331,7 +347,7 @@ for (const kit of KITS) {
     const name = fileName.replace(/\.(glb|gltf)$/i, "");
     if (kit.skip?.test(name)) continue;
 
-    const baked = extract(path.join(folder, fileName), kit.detailedTexture === true);
+    const baked = extract(path.join(folder, fileName), kit);
     if (baked.length === 0) continue;
 
     const isTile = kit.grid !== undefined && (kit.gridMatch?.test(name) ?? true);

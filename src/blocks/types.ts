@@ -51,7 +51,9 @@ export type Primitive =
   /** A [z, y] side profile extruded across X, centered. */
   | { kind: "extrude"; points: Point[]; depth: number; bevel?: number; bevelSteps?: number; deform?: BodyDeform }
   /** An [x, z] floor outline extruded upward from y = 0. */
-  | { kind: "slab"; points: Point[]; height: number };
+  | { kind: "slab"; points: Point[]; height: number }
+  /** Free polygons, from a shape made in the editor. `crease` is in degrees. */
+  | { kind: "polygons"; vertices: Vec3[]; faces: number[][]; crease: number };
 
 export interface ShapePiece {
   shape: Primitive;

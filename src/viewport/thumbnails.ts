@@ -19,8 +19,8 @@ interface Studio {
 }
 
 const direction = new THREE.Vector3(1, 0.85, 1.2).normalize();
-const cache = new Map<string, string>();
-const queue = new Map<string, { block: BlockDef; listeners: Set<(url: string) => void> }>();
+const cache = new WeakMap<BlockDef, string>();
+const queue = new Map<BlockDef, Set<(url: string) => void>>();
 let studio: Studio | null = null;
 let scheduled = false;
 
@@ -69,11 +69,11 @@ function schedule(): void {
   requestAnimationFrame(() => {
     scheduled = false;
     const start = performance.now();
-    for (const [id, { block, listeners }] of queue) {
+    for (const [block, listeners] of queue) {
       if (performance.now() - start > FRAME_BUDGET_MS) break;
-      queue.delete(id);
+      queue.delete(block);
       const url = render(block);
-      cache.set(id, url);
+      cache.set(block, url);
       for (const listener of listeners) listener(url);
     }
     schedule();
@@ -82,20 +82,20 @@ function schedule(): void {
 
 /** Draws thumbnails a few per frame, so a category with hundreds of models never freezes. */
 export function useThumbnail(block: BlockDef): string | undefined {
-  const [url, setUrl] = useState(() => cache.get(block.id));
+  const [url, setUrl] = useState(() => cache.get(block));
 
   useEffect(() => {
-    const cached = cache.get(block.id);
+    const cached = cache.get(block);
     setUrl(cached);
     if (cached) return;
 
-    const entry = queue.get(block.id) ?? { block, listeners: new Set() };
-    entry.listeners.add(setUrl);
-    queue.set(block.id, entry);
+    const listeners = queue.get(block) ?? new Set();
+    listeners.add(setUrl);
+    queue.set(block, listeners);
     schedule();
     return () => {
-      entry.listeners.delete(setUrl);
-      if (entry.listeners.size === 0 && queue.get(block.id) === entry) queue.delete(block.id);
+      listeners.delete(setUrl);
+      if (listeners.size === 0 && queue.get(block) === listeners) queue.delete(block);
     };
   }, [block]);
 

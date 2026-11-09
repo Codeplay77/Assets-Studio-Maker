@@ -28,6 +28,8 @@ Cada pacote traz um `License.txt` com "License: (Creative Commons Zero, CC0)".
 | [Inter](https://rsms.me/inter/) (fonte) | SIL Open Font License 1.1 |
 | [Lucide](https://lucide.dev) (ícones) | ISC |
 | [three.js](https://threejs.org) | MIT |
+| [three-bvh-csg](https://github.com/gkjohnson/three-bvh-csg) | MIT |
+| [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) | MIT |
 | [React](https://react.dev) | MIT |
 | [Zustand](https://zustand.docs.pmnd.rs) | MIT |
 | [Tauri](https://tauri.app) | MIT ou Apache 2.0 |

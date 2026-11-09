@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { Library, Puzzle, Sparkles, type LucideIcon } from "lucide-react";
+import { Library, PencilRuler, Puzzle, Sparkles, type LucideIcon } from "lucide-react";
 import { BlockBrowser } from "./BlockBrowser";
 import { GeneratorPanel } from "./GeneratorPanel";
+import { ShapePanel } from "./ShapePanel";
 
-type Tab = "create" | "library" | "parts";
+type Tab = "create" | "model" | "library" | "parts";
 
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "create", label: "Criar", icon: Sparkles },
+  { id: "model", label: "Modelar", icon: PencilRuler },
   { id: "library", label: "Biblioteca", icon: Library },
   { id: "parts", label: "Peças", icon: Puzzle },
 ];
@@ -25,6 +27,7 @@ export function Dock() {
         ))}
       </nav>
       {tab === "create" && <GeneratorPanel />}
+      {tab === "model" && <ShapePanel />}
       {tab === "library" && <BlockBrowser key="library" group="library" />}
       {tab === "parts" && <BlockBrowser key="parts" group="parts" />}
     </aside>

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { getBlock } from "../blocks/catalog";
+import { getBlock, hasBlock, meshToBlockShape, type BlockDef } from "../blocks/catalog";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import {
   buildGeometry,
@@ -9,7 +9,10 @@ import {
   createStudioLighting,
   disposeBlockMaterials,
 } from "../blocks/geometry";
-import type { Part, PartId, Project, Quat, Tool } from "../core/types";
+import type { CustomShape, Part, PartId, PartUpdate, PickMode, Project, Quat, Tool, Vec3 } from "../core/types";
+import { softWeights, transformVertices, type PolyMesh } from "../modeling/mesh";
+import { SculptStroke, type BrushKind, type BrushSettings } from "../modeling/sculpt";
+import { MeshOverlay, type MeshBoxHit, type MeshHit, type MeshSelection } from "./MeshOverlay";
 import {
   alignToSurface,
   findNearestSocket,
@@ -26,6 +29,10 @@ const PLACEMENT_GRID = 0.125;
 const MOVE_SNAP = 0.125;
 const ROTATE_SNAP = THREE.MathUtils.degToRad(15);
 const SCALE_SNAP = 0.125;
+/** Editing polygons needs finer steps than moving whole parts. */
+const MESH_MOVE_SNAP = 0.025;
+const MESH_ROTATE_SNAP = THREE.MathUtils.degToRad(5);
+const MESH_SCALE_SNAP = 0.05;
 const MARKER_POOL = 24;
 const SELECTED_EMISSIVE = 0x0b5a42;
 const ACCENT = 0x1ef5a6;
@@ -33,10 +40,31 @@ const UP = new THREE.Vector3(0, 1, 0);
 const SUN_DIRECTION = new THREE.Vector3(4, 8, 5).normalize();
 const MIN_SHADOW_RADIUS = 8;
 const FINE_GRID_RANGE = 16;
+const DOUBLE_CLICK_MS = 350;
+const HOVER_EMISSIVE = 0x06281f;
 const MIN_UPWARD_NORMAL = 0.7;
 /** The panel on the left covers the canvas, so the view is centered on what remains. */
 const LEFT_DOCK_PX = 344;
 const HORIZON = 0x161b27;
+const FOCUS_MARGIN = 1.3;
+const FOCUS_MARGIN_MODELING = 2.1;
+const CAPTURE_FOV = 30;
+const CAPTURE_MARGIN = 1.08;
+const CAPTURE_QUALITY = 0.9;
+const BRUSH_RING_SEGMENTS = 64;
+const BRUSH_RING_LIFT = 0.004;
+const Z_AXIS = new THREE.Vector3(0, 0, 1);
+
+export type CaptureView = "iso" | "front" | "back" | "left" | "right" | "top" | "current";
+
+const CAPTURE_DIRECTIONS: Record<Exclude<CaptureView, "current">, THREE.Vector3> = {
+  iso: new THREE.Vector3(1, 0.75, 1.2).normalize(),
+  front: new THREE.Vector3(0, 0, 1),
+  back: new THREE.Vector3(0, 0, -1),
+  left: new THREE.Vector3(-1, 0, 0),
+  right: new THREE.Vector3(1, 0, 0),
+  top: new THREE.Vector3(0, 1, 0),
+};
 
 function createBackdrop(): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
@@ -57,16 +85,36 @@ function createBackdrop(): THREE.CanvasTexture {
 
 type PartMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial[]>;
 
-export interface TransformValues {
-  position: [number, number, number];
-  rotation: Quat;
-  scale: [number, number, number];
-}
-
 export interface ViewportCallbacks {
   onPlace(block: string, placement: Placement): void;
-  onSelect(id: PartId | null): void;
-  onTransformCommit(id: PartId, values: TransformValues): void;
+  onPick(id: PartId | null, mode: PickMode): void;
+  onTransformCommit(updates: PartUpdate[]): void;
+  onMeshPick(hit: MeshHit | null, additive: boolean): void;
+  onMeshTransform(vertices: Vec3[]): void;
+  onMeshBox(hit: MeshBoxHit, additive: boolean): void;
+}
+
+interface SculptSession {
+  shape: CustomShape;
+  stroke: SculptStroke;
+  kind: BrushKind;
+  partInverse: THREE.Matrix4;
+  part: THREE.Matrix4;
+  /** The surface point a grab holds on to, and the plane it moves along. */
+  grabStart: THREE.Vector3 | null;
+  grabPlane: THREE.Plane | null;
+  changed: boolean;
+  redrawQueued: boolean;
+}
+
+interface MeshDrag {
+  shape: CustomShape;
+  part: THREE.Matrix4;
+  partInverse: THREE.Matrix4;
+  pivotInverse: THREE.Matrix4;
+  weights: Map<number, number>;
+  preview: PolyMesh;
+  changed: boolean;
 }
 
 export class EditorViewport {
@@ -81,12 +129,40 @@ export class EditorViewport {
   private readonly pointer = new THREE.Vector2();
   private readonly ground = new THREE.Plane(UP.clone(), 0);
   private readonly resizeObserver: ResizeObserver;
-  private readonly geometries = new Map<string, THREE.BufferGeometry>();
+  private readonly geometries = new Map<string, { def: BlockDef; geometry: THREE.BufferGeometry }>();
+  private readonly overlay = new MeshOverlay();
+  private readonly meshPivot = new THREE.Object3D();
+  private project: Project | null = null;
+  private modeling: { partId: PartId; shapeId: string } | null = null;
+  private meshSelection: MeshSelection = { mode: "face", faces: [], vertices: [] };
+  private softRadius = 0;
+  private brush: BrushSettings = { kind: "raise", radius: 0.3, strength: 0.5, symmetry: false };
+  private sculpt: SculptSession | null = null;
+  private readonly brushRing = new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints(
+      Array.from({ length: BRUSH_RING_SEGMENTS }, (_, index) => {
+        const angle = (index / BRUSH_RING_SEGMENTS) * Math.PI * 2;
+        return new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0);
+      }),
+    ),
+    new THREE.LineBasicMaterial({ color: ACCENT, depthTest: false, transparent: true }),
+  );
+  private readonly marquee = document.createElement("div");
+  private marqueeActive = false;
+  private meshDrag: MeshDrag | null = null;
+  private previewGeometry: THREE.BufferGeometry | null = null;
+  private snapEnabled = true;
   private readonly meshes = new Map<PartId, PartMesh>();
   private readonly ghost: PartMesh;
   private readonly markers: THREE.Mesh[] = [];
 
-  private selected: PartId | null = null;
+  /** What the gizmo moves when several parts are selected. */
+  private readonly pivot = new THREE.Object3D();
+  private selected: PartId[] = [];
+  private hovered: PartId[] = [];
+  private dragStart = new Map<PartId, THREE.Matrix4>();
+  private pivotStartInverse = new THREE.Matrix4();
+  private lastClick: { id: PartId; time: number } | null = null;
   private placing: { block: string; color: string } | null = null;
   private yawSteps = 0;
   private pointerInside = false;
@@ -131,7 +207,14 @@ export class EditorViewport {
     this.gizmo.setScaleSnap(SCALE_SNAP);
     this.gizmo.addEventListener("change", this.requestRender);
     this.gizmo.addEventListener("dragging-changed", this.onGizmoDragging);
-    this.scene.add(this.gizmo.getHelper());
+    this.gizmo.addEventListener("objectChange", this.onGizmoMoved);
+    this.scene.add(this.gizmo.getHelper(), this.pivot, this.meshPivot, this.overlay.group, this.brushRing);
+    this.brushRing.visible = false;
+    this.brushRing.renderOrder = 12;
+    this.brushRing.frustumCulled = false;
+    this.marquee.className = "marquee";
+    this.marquee.hidden = true;
+    container.appendChild(this.marquee);
 
     this.addEnvironment();
 
@@ -167,6 +250,7 @@ export class EditorViewport {
   }
 
   setProject(project: Project): void {
+    this.project = project;
     const present = new Set<PartId>();
     for (const part of project.parts) {
       present.add(part.id);
@@ -178,14 +262,42 @@ export class EditorViewport {
       disposeBlockMaterials(mesh.material);
       this.meshes.delete(id);
     }
+    this.releaseUnusedGeometry();
+    if (this.placing && hasBlock(this.placing.block)) this.ghost.geometry = this.geometryFor(this.placing.block);
     this.fitShadowsToModel();
     this.applySelection();
     this.updateGhost();
     this.requestRender();
   }
 
-  setSelection(id: PartId | null): void {
-    this.selected = id;
+  setSelection(ids: PartId[]): void {
+    this.selected = ids;
+    this.applySelection();
+    this.requestRender();
+  }
+
+  setSnap(enabled: boolean): void {
+    this.snapEnabled = enabled;
+    this.applySnap();
+  }
+
+  setModeling(
+    target: { partId: PartId; shapeId: string } | null,
+    selection: MeshSelection,
+    softRadius: number,
+    brush: BrushSettings,
+  ): void {
+    const changedTarget = target?.partId !== this.modeling?.partId;
+    this.modeling = target;
+    this.meshSelection = selection;
+    this.softRadius = softRadius;
+    this.brush = brush;
+    if (selection.mode !== "sculpt" || !target) this.brushRing.visible = false;
+    if (changedTarget) {
+      this.overlay.hide();
+      this.applySnap();
+      if (!target) this.gizmo.setSpace("world");
+    }
     this.applySelection();
     this.requestRender();
   }
@@ -210,17 +322,53 @@ export class EditorViewport {
     this.gizmo.setMode(tool);
   }
 
-  /** Frames the selected part, or the whole model when nothing is selected. */
-  focus(): void {
-    const selected = this.selected === null ? undefined : this.meshes.get(this.selected);
-    const targets = selected ? [selected] : [...this.meshes.values()];
+  /**
+   * Renders a picture without touching what the person sees, and returns it as a base64 JPEG.
+   * Reading the canvas right after drawing, in the same task, avoids keeping every frame around.
+   */
+  capture(view: CaptureView, width: number, height: number, ids?: PartId[]): string {
+    const targets = ids ? ids.flatMap((id) => this.meshes.get(id) ?? []) : [...this.meshes.values()];
+    if (ids && targets.length === 0) throw new Error("nenhuma das peças pedidas existe");
+    const { camera, distance } = this.captureCamera(view, width / height, targets);
+
+    const helpers = [this.gizmo.getHelper(), this.ghost, this.overlay.group, this.brushRing, ...this.markers];
+    const wasVisible = helpers.map((helper) => helper.visible);
+    const { selected, hovered } = this;
+    for (const helper of helpers) helper.visible = false;
+    this.selected = [];
+    this.hovered = [];
+    this.applyHighlights();
+    this.fitAtmosphere(distance);
+
+    const pixelRatio = this.renderer.getPixelRatio();
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(width, height, false);
+    this.renderer.render(this.scene, camera);
+    const image = this.renderer.domElement.toDataURL("image/jpeg", CAPTURE_QUALITY);
+
+    helpers.forEach((helper, index) => (helper.visible = wasVisible[index]));
+    this.selected = selected;
+    this.hovered = hovered;
+    this.applyHighlights();
+    this.renderer.setPixelRatio(pixelRatio);
+    this.onCameraChange();
+    this.onResize();
+    return image.slice(image.indexOf(",") + 1);
+  }
+
+  /** Frames the selection, or everything when nothing is selected or `all` is set. */
+  focus(all = false): void {
+    const selected = all ? [] : this.selectedMeshes();
+    const targets = selected.length > 0 ? selected : [...this.meshes.values()];
     if (targets.length === 0) return;
 
     const box = new THREE.Box3();
     for (const target of targets) box.expandByObject(target);
     const center = box.getCenter(new THREE.Vector3());
     const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 0.4);
-    const distance = (radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2))) * 1.3;
+    // Polygon editing needs room around the shape for the arrows, clear of the panels.
+    const margin = this.modeling ? FOCUS_MARGIN_MODELING : FOCUS_MARGIN;
+    const distance = (radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2))) * margin;
     const direction = this.camera.position.clone().sub(this.orbit.target).normalize();
 
     this.orbit.target.copy(center);
@@ -237,6 +385,9 @@ export class EditorViewport {
     canvas.removeEventListener("pointerdown", this.onPointerDown);
     canvas.removeEventListener("pointerup", this.onPointerUp);
     canvas.removeEventListener("pointerleave", this.onPointerLeave);
+    this.marquee.remove();
+    this.brushRing.geometry.dispose();
+    this.brushRing.material.dispose();
 
     this.gizmo.detach();
     this.gizmo.dispose();
@@ -244,9 +395,52 @@ export class EditorViewport {
     for (const mesh of [...this.meshes.values(), this.ghost]) disposeBlockMaterials(mesh.material);
     this.scene.environment?.dispose();
     (this.scene.background as THREE.Texture).dispose();
-    for (const geometry of this.geometries.values()) geometry.dispose();
+    for (const { geometry } of this.geometries.values()) geometry.dispose();
+    this.previewGeometry?.dispose();
+    this.overlay.dispose();
     this.renderer.dispose();
     canvas.remove();
+  }
+
+  private captureCamera(
+    view: CaptureView,
+    aspect: number,
+    targets: PartMesh[],
+  ): { camera: THREE.PerspectiveCamera; distance: number } {
+    if (view === "current") {
+      const camera = new THREE.PerspectiveCamera(this.camera.fov, aspect, this.camera.near, this.camera.far);
+      camera.position.copy(this.camera.position);
+      camera.quaternion.copy(this.camera.quaternion);
+      camera.updateMatrixWorld();
+      return { camera, distance: this.camera.position.distanceTo(this.orbit.target) };
+    }
+
+    const box = new THREE.Box3();
+    for (const target of targets) box.expandByObject(target);
+    if (box.isEmpty()) box.set(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 1, 1));
+    const center = box.getCenter(new THREE.Vector3());
+    const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 0.4);
+
+    const camera = new THREE.PerspectiveCamera(CAPTURE_FOV, aspect, 0.05, 5000);
+    const halfVertical = THREE.MathUtils.degToRad(CAPTURE_FOV / 2);
+    const halfHorizontal = Math.atan(Math.tan(halfVertical) * aspect);
+    const distance = (radius / Math.sin(Math.min(halfVertical, halfHorizontal))) * CAPTURE_MARGIN;
+
+    camera.position.copy(center).addScaledVector(CAPTURE_DIRECTIONS[view], distance);
+    if (view === "top") camera.up.set(0, 0, -1);
+    camera.lookAt(center);
+    camera.updateMatrixWorld();
+    return { camera, distance };
+  }
+
+  /** Keeps the grid and the fog right for how far the camera is. */
+  private fitAtmosphere(distance: number): void {
+    // From far away the 25 cm grid turns into visual noise.
+    this.fineGrid.visible = distance < FINE_GRID_RANGE;
+    // The ground fades into the horizon at any zoom level.
+    const fog = this.scene.fog as THREE.Fog;
+    fog.near = distance * 1.4 + 10;
+    fog.far = distance * 3.2 + 50;
   }
 
   private addEnvironment(): void {
@@ -302,19 +496,43 @@ export class EditorViewport {
     shadowCamera.updateProjectionMatrix();
   }
 
+  private applySnap(): void {
+    const fine = this.modeling !== null;
+    this.gizmo.setTranslationSnap(this.snapEnabled ? (fine ? MESH_MOVE_SNAP : MOVE_SNAP) : null);
+    this.gizmo.setRotationSnap(this.snapEnabled ? (fine ? MESH_ROTATE_SNAP : ROTATE_SNAP) : null);
+    this.gizmo.setScaleSnap(this.snapEnabled ? (fine ? MESH_SCALE_SNAP : SCALE_SNAP) : null);
+  }
+
+  /** A shape that changed gets a new definition, which is what triggers a rebuild here. */
   private geometryFor(block: string): THREE.BufferGeometry {
-    let geometry = this.geometries.get(block);
-    if (!geometry) {
-      geometry = buildGeometry(getBlock(block).shape);
-      this.geometries.set(block, geometry);
-    }
+    const def = getBlock(block);
+    const cached = this.geometries.get(block);
+    if (cached?.def === def) return cached.geometry;
+    cached?.geometry.dispose();
+    const geometry = buildGeometry(def.shape);
+    this.geometries.set(block, { def, geometry });
     return geometry;
   }
 
+  private releaseUnusedGeometry(): void {
+    if (this.previewGeometry && !this.meshDrag && !this.sculpt) {
+      this.previewGeometry.dispose();
+      this.previewGeometry = null;
+    }
+    for (const [block, { geometry }] of this.geometries) {
+      if (hasBlock(block)) continue;
+      geometry.dispose();
+      this.geometries.delete(block);
+    }
+  }
+
   private syncPart(part: Part): void {
+    // The block list can be one step ahead of this project while an agent is working.
+    if (!hasBlock(part.block)) return;
+    const geometry = this.geometryFor(part.block);
     let mesh = this.meshes.get(part.id);
     if (!mesh) {
-      mesh = new THREE.Mesh(this.geometryFor(part.block), createBlockMaterials(part.color));
+      mesh = new THREE.Mesh(geometry, createBlockMaterials(part.color));
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.userData.partId = part.id;
@@ -322,8 +540,10 @@ export class EditorViewport {
       this.scene.add(mesh);
       this.meshes.set(part.id, mesh);
     }
+    if (mesh.geometry !== geometry && !this.meshDrag && !this.sculpt) mesh.geometry = geometry;
+    mesh.userData.group = part.group;
     for (const material of this.tintedMaterials(mesh)) material.color.set(part.color);
-    if (this.transforming && part.id === this.selected) return;
+    if (this.transforming && this.selected.includes(part.id)) return;
     mesh.position.fromArray(part.position);
     mesh.quaternion.fromArray(part.rotation);
     mesh.scale.fromArray(part.scale);
@@ -335,18 +555,317 @@ export class EditorViewport {
     return mesh.material.filter((_, slot) => slot % 2 === 0);
   }
 
-  private applySelection(): void {
+  private selectedMeshes(): PartMesh[] {
+    return this.selected.flatMap((id) => this.meshes.get(id) ?? []);
+  }
+
+  private applyHighlights(): void {
+    // While editing polygons the overlay shows the selection.
+    const selected = new Set(this.modeling ? [] : this.selected);
+    const hovered = new Set(this.hovered);
     for (const [id, mesh] of this.meshes) {
-      for (const material of this.tintedMaterials(mesh)) {
-        material.emissive.setHex(id === this.selected ? SELECTED_EMISSIVE : 0x000000);
-      }
+      const glow = selected.has(id) ? SELECTED_EMISSIVE : hovered.has(id) ? HOVER_EMISSIVE : 0x000000;
+      for (const material of this.tintedMaterials(mesh)) material.emissive.setHex(glow);
     }
-    const mesh = this.selected === null ? undefined : this.meshes.get(this.selected);
-    if (mesh) {
-      if (this.gizmo.object !== mesh) this.gizmo.attach(mesh);
-    } else {
+  }
+
+  private applySelection(): void {
+    this.applyHighlights();
+    if (this.transforming) return;
+    if (this.modeling) {
+      this.updateMeshEditing();
+      return;
+    }
+
+    const meshes = this.selectedMeshes();
+    if (meshes.length === 0) {
       this.gizmo.detach();
+    } else if (meshes.length === 1) {
+      if (this.gizmo.object !== meshes[0]) this.gizmo.attach(meshes[0]);
+    } else {
+      const box = new THREE.Box3();
+      for (const mesh of meshes) box.expandByObject(mesh);
+      box.getCenter(this.pivot.position);
+      this.pivot.quaternion.identity();
+      this.pivot.scale.setScalar(1);
+      this.pivot.updateMatrixWorld();
+      if (this.gizmo.object !== this.pivot) this.gizmo.attach(this.pivot);
     }
+  }
+
+  private editedShape(): CustomShape | undefined {
+    return this.project?.shapes.find((shape) => shape.id === this.modeling?.shapeId);
+  }
+
+  /** Draws the polygons of the edited shape and puts the arrows on what is selected. */
+  private updateMeshEditing(): void {
+    const shape = this.editedShape();
+    const mesh = this.modeling ? this.meshes.get(this.modeling.partId) : undefined;
+    if (!shape || !mesh) {
+      this.overlay.hide();
+      this.gizmo.detach();
+      return;
+    }
+    mesh.updateMatrixWorld();
+    this.overlay.update(shape, mesh.matrixWorld, this.meshSelection);
+
+    const ids = this.selectedMeshVertices(shape);
+    if (ids.length === 0) {
+      this.gizmo.detach();
+      return;
+    }
+    const center = new THREE.Vector3();
+    for (const id of ids) center.add(new THREE.Vector3(...shape.vertices[id]));
+    this.meshPivot.position.copy(center.divideScalar(ids.length).applyMatrix4(mesh.matrixWorld));
+    this.meshPivot.scale.setScalar(1);
+
+    // Over faces, the green arrow points straight out of them, so pulling is the obvious move.
+    const normal = this.meshSelection.mode === "face" ? this.overlay.averageNormal(this.meshSelection.faces) : new THREE.Vector3();
+    if (normal.lengthSq() > 0) {
+      this.meshPivot.quaternion.setFromUnitVectors(UP, normal);
+      this.gizmo.setSpace("local");
+    } else {
+      this.meshPivot.quaternion.identity();
+      this.gizmo.setSpace("world");
+    }
+    this.meshPivot.updateMatrix();
+    this.meshPivot.updateMatrixWorld();
+    if (this.gizmo.object !== this.meshPivot) this.gizmo.attach(this.meshPivot);
+  }
+
+  private selectedMeshVertices(shape: CustomShape): number[] {
+    const { mode, faces, vertices } = this.meshSelection;
+    const chosen = mode === "face" ? faces.flatMap((id) => shape.faces[id] ?? []) : vertices;
+    return [...new Set(chosen)].filter((id) => id < shape.vertices.length);
+  }
+
+  private beginMeshDrag(): void {
+    const shape = this.editedShape();
+    const mesh = this.modeling ? this.meshes.get(this.modeling.partId) : undefined;
+    if (!shape || !mesh) return;
+    this.meshPivot.updateMatrix();
+    mesh.updateMatrixWorld();
+    this.meshDrag = {
+      shape,
+      part: mesh.matrixWorld.clone(),
+      partInverse: mesh.matrixWorld.clone().invert(),
+      pivotInverse: this.meshPivot.matrix.clone().invert(),
+      weights: softWeights(shape, this.selectedMeshVertices(shape), this.softRadius),
+      preview: shape,
+      changed: false,
+    };
+  }
+
+  /** Reshapes every part using this shape as the arrows move, before anything is saved. */
+  private previewMeshDrag(): void {
+    const drag = this.meshDrag;
+    if (!drag) return;
+    this.meshPivot.updateMatrix();
+    const world = this.meshPivot.matrix.clone().multiply(drag.pivotInverse);
+    const local = drag.partInverse.clone().multiply(world).multiply(drag.part);
+    drag.preview = transformVertices(drag.shape, drag.weights, local);
+    drag.changed = true;
+
+    this.showPreview(drag.preview, drag.shape.id);
+    this.overlay.update(drag.preview, drag.part, this.meshSelection);
+  }
+
+  private showPreview(preview: PolyMesh, shapeId: string): void {
+    const geometry = buildGeometry(meshToBlockShape(preview));
+    for (const mesh of this.meshes.values()) {
+      if (mesh.userData.block === shapeId) mesh.geometry = geometry;
+    }
+    this.previewGeometry?.dispose();
+    this.previewGeometry = geometry;
+  }
+
+  private rayHitsSurface() {
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    return this.overlay.pickSurfacePoint(this.raycaster);
+  }
+
+  private showBrushRing(): void {
+    const hit = this.rayHitsSurface();
+    const mesh = this.modeling ? this.meshes.get(this.modeling.partId) : undefined;
+    const visible = hit !== null && mesh !== undefined;
+    if (visible) {
+      const scale = mesh.getWorldScale(new THREE.Vector3());
+      this.brushRing.position.copy(hit.point).addScaledVector(hit.normal, BRUSH_RING_LIFT);
+      this.brushRing.quaternion.setFromUnitVectors(Z_AXIS, hit.normal);
+      this.brushRing.scale.setScalar(this.brush.radius * Math.max(scale.x, scale.y, scale.z));
+    }
+    if (visible || this.brushRing.visible) this.requestRender();
+    this.brushRing.visible = visible;
+  }
+
+  private beginSculpt(event: PointerEvent): boolean {
+    const shape = this.editedShape();
+    const mesh = this.modeling ? this.meshes.get(this.modeling.partId) : undefined;
+    const hit = this.rayHitsSurface();
+    if (!shape || !mesh || !hit) return false;
+
+    mesh.updateMatrixWorld();
+    // Holding Ctrl does the opposite and holding Shift smooths, without going to the panel.
+    let kind = this.brush.kind;
+    if (event.shiftKey) kind = "smooth";
+    else if (event.ctrlKey && kind === "raise") kind = "lower";
+    else if (event.ctrlKey && kind === "lower") kind = "raise";
+
+    const session: SculptSession = {
+      shape,
+      stroke: new SculptStroke(shape, { ...this.brush, kind }),
+      kind,
+      part: mesh.matrixWorld.clone(),
+      partInverse: mesh.matrixWorld.clone().invert(),
+      grabStart: null,
+      grabPlane: null,
+      changed: false,
+      redrawQueued: false,
+    };
+    this.sculpt = session;
+    const local = hit.point.clone().applyMatrix4(session.partInverse);
+    if (kind === "grab") {
+      session.grabStart = hit.point.clone();
+      session.grabPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+        this.camera.getWorldDirection(new THREE.Vector3()),
+        hit.point,
+      );
+      session.stroke.grab(local.toArray());
+    } else {
+      session.stroke.paint(local.toArray());
+      this.markSculptChanged();
+    }
+    return true;
+  }
+
+  private continueSculpt(): void {
+    const session = this.sculpt;
+    if (!session) return;
+    if (session.grabStart && session.grabPlane) {
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+      const point = this.raycaster.ray.intersectPlane(session.grabPlane, new THREE.Vector3());
+      if (!point) return;
+      const from = session.grabStart.clone().applyMatrix4(session.partInverse);
+      session.stroke.drag(point.applyMatrix4(session.partInverse).sub(from).toArray());
+      this.markSculptChanged();
+      return;
+    }
+    const hit = this.rayHitsSurface();
+    if (!hit) return;
+    session.stroke.paint(hit.point.clone().applyMatrix4(session.partInverse).toArray());
+    this.markSculptChanged();
+  }
+
+  /** Mouse events come faster than a detailed shape can be rebuilt, so it redraws once a frame. */
+  private markSculptChanged(): void {
+    const session = this.sculpt;
+    if (!session) return;
+    session.changed = true;
+    if (session.redrawQueued) return;
+    session.redrawQueued = true;
+    requestAnimationFrame(() => {
+      session.redrawQueued = false;
+      if (this.sculpt !== session) return;
+      this.showPreview({ ...session.shape, vertices: session.stroke.vertices }, session.shape.id);
+      this.requestRender();
+    });
+  }
+
+  private endSculpt(): void {
+    const session = this.sculpt;
+    this.sculpt = null;
+    if (!session) return;
+    if (session.changed) {
+      this.showPreview({ ...session.shape, vertices: session.stroke.vertices }, session.shape.id);
+      this.callbacks.onMeshTransform(session.stroke.vertices);
+    }
+    this.requestRender();
+  }
+
+  private updateMarquee(event: PointerEvent): void {
+    const press = this.press;
+    if (!press || press.onGizmo || !this.modeling || this.transforming) return;
+    if (!this.marqueeActive && Math.hypot(event.clientX - press.x, event.clientY - press.y) <= CLICK_TOLERANCE_PX) return;
+    this.marqueeActive = true;
+    const { left, top } = this.renderer.domElement.getBoundingClientRect();
+    this.marquee.hidden = false;
+    this.marquee.style.left = `${Math.min(event.clientX, press.x) - left}px`;
+    this.marquee.style.top = `${Math.min(event.clientY, press.y) - top}px`;
+    this.marquee.style.width = `${Math.abs(event.clientX - press.x)}px`;
+    this.marquee.style.height = `${Math.abs(event.clientY - press.y)}px`;
+  }
+
+  private finishMarquee(event: PointerEvent, press: { x: number; y: number }): void {
+    this.marqueeActive = false;
+    this.marquee.hidden = true;
+    const canvas = this.renderer.domElement;
+    const { left, top } = canvas.getBoundingClientRect();
+    const rect = {
+      left: Math.min(event.clientX, press.x) - left,
+      top: Math.min(event.clientY, press.y) - top,
+      right: Math.max(event.clientX, press.x) - left,
+      bottom: Math.max(event.clientY, press.y) - top,
+    };
+    const hit = this.overlay.boxSelect(rect, canvas.clientWidth, canvas.clientHeight, this.camera, this.meshSelection.mode);
+    this.callbacks.onMeshBox(hit, event.shiftKey || event.ctrlKey);
+  }
+
+  private endMeshDrag(): void {
+    const drag = this.meshDrag;
+    this.meshDrag = null;
+    if (drag?.changed) this.callbacks.onMeshTransform(drag.preview.vertices);
+    else this.applySelection();
+  }
+
+  private hitMesh(): MeshHit | null {
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const size = this.renderer.getSize(new THREE.Vector2());
+    if (this.meshSelection.mode === "sculpt") return null;
+    if (this.meshSelection.mode === "face") {
+      const face = this.overlay.pickFace(this.raycaster);
+      return face === null ? null : { face };
+    }
+    if (this.meshSelection.mode === "vertex") {
+      const vertex = this.overlay.pickVertex(this.raycaster, this.camera, this.pointer, size);
+      return vertex === null ? null : { vertex };
+    }
+    const edge = this.overlay.pickEdge(this.raycaster, this.camera, this.pointer, size);
+    return edge === null ? null : { edge };
+  }
+
+  private updateMeshHover(): void {
+    if (this.meshSelection.mode === "sculpt") {
+      this.showBrushRing();
+      return;
+    }
+    let face: number | null = null;
+    if (this.meshSelection.mode === "face" && !this.transforming && this.gizmo.axis === null) {
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+      face = this.overlay.pickFace(this.raycaster);
+    }
+    if (this.overlay.setHover(face)) this.requestRender();
+  }
+
+  private updateHover(): void {
+    if (this.modeling) {
+      this.updateMeshHover();
+      return;
+    }
+    const hit = this.transforming || this.placing ? undefined : this.pick();
+    const id = hit?.object.userData.partId as PartId | undefined;
+    const group = hit?.object.userData.group as number | undefined;
+
+    let next: PartId[] = [];
+    if (id !== undefined) {
+      next =
+        group === undefined
+          ? [id]
+          : [...this.meshes].filter(([, mesh]) => mesh.userData.group === group).map(([partId]) => partId);
+    }
+    if (next.length === this.hovered.length && next[0] === this.hovered[0]) return;
+    this.hovered = next;
+    this.applyHighlights();
+    this.requestRender();
   }
 
   private pick(): THREE.Intersection<PartMesh> | undefined {
@@ -417,9 +936,17 @@ export class EditorViewport {
   private readonly onPointerMove = (event: PointerEvent): void => {
     this.pointerInside = true;
     this.updatePointer(event);
+    if (this.sculpt) {
+      this.showBrushRing();
+      this.continueSculpt();
+      return;
+    }
+    if (this.modeling && this.meshSelection.mode !== "sculpt" && event.buttons === 1) this.updateMarquee(event);
     if (this.placing) {
       this.updateGhost();
       this.requestRender();
+    } else if (event.buttons === 0) {
+      this.updateHover();
     }
   };
 
@@ -427,27 +954,70 @@ export class EditorViewport {
     if (event.button !== 0) return;
     this.updatePointer(event);
     this.press = { x: event.clientX, y: event.clientY, onGizmo: this.gizmo.axis !== null };
+    if (!this.modeling || this.press.onGizmo) return;
+    if (this.meshSelection.mode === "sculpt" && !this.beginSculpt(event)) return;
+    // The stroke or the rectangle keeps going if the mouse passes over a panel.
+    this.renderer.domElement.setPointerCapture(event.pointerId);
   };
 
   private readonly onPointerUp = (event: PointerEvent): void => {
     const press = this.press;
     this.press = null;
-    if (event.button !== 0 || !press || press.onGizmo) return;
+    if (event.button !== 0 || !press) return;
+    if (this.renderer.domElement.hasPointerCapture(event.pointerId)) {
+      this.renderer.domElement.releasePointerCapture(event.pointerId);
+    }
+    if (this.sculpt) {
+      this.endSculpt();
+      return;
+    }
+    if (this.marqueeActive) {
+      this.finishMarquee(event, press);
+      return;
+    }
     if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > CLICK_TOLERANCE_PX) return;
 
     this.updatePointer(event);
+    if (this.modeling) {
+      if (!press.onGizmo) this.callbacks.onMeshPick(this.hitMesh(), event.shiftKey || event.ctrlKey);
+      return;
+    }
+    // Adding a part to the selection has to work even when the part is behind the arrows.
+    if (press.onGizmo && !event.shiftKey && !event.ctrlKey) {
+      // The arrows sit on top of the model, and a double click there still means "this part".
+      const under = this.pick();
+      const id = under?.object.userData.partId as PartId | undefined;
+      const repeated = id !== undefined && this.lastClick?.id === id;
+      if (repeated && performance.now() - this.lastClick!.time < DOUBLE_CLICK_MS) {
+        this.lastClick = null;
+        this.callbacks.onPick(id, "single");
+      }
+      return;
+    }
+
     if (this.placing) {
       const placement = this.computePlacement();
       if (placement) this.callbacks.onPlace(this.placing.block, placement);
       return;
     }
     const hit = this.pick();
-    this.callbacks.onSelect(hit ? (hit.object.userData.partId as PartId) : null);
+    const id = hit ? (hit.object.userData.partId as PartId) : null;
+    const additive = event.shiftKey || event.ctrlKey;
+    const now = performance.now();
+    const isDouble =
+      !additive && id !== null && this.lastClick?.id === id && now - this.lastClick.time < DOUBLE_CLICK_MS;
+    this.lastClick = id === null ? null : { id, time: now };
+    this.callbacks.onPick(id, additive ? "toggle" : isDouble ? "single" : "group");
   };
 
   private readonly onPointerLeave = (): void => {
     this.pointerInside = false;
+    if (this.brushRing.visible) this.brushRing.visible = false;
     this.updateGhost();
+    if (this.hovered.length > 0) {
+      this.hovered = [];
+      this.applyHighlights();
+    }
     this.requestRender();
   };
 
@@ -455,25 +1025,66 @@ export class EditorViewport {
     const dragging = Boolean(event.value);
     this.orbit.enabled = !dragging;
     this.transforming = dragging;
-    if (dragging || this.selected === null) return;
 
-    const mesh = this.meshes.get(this.selected);
-    if (!mesh) return;
-    this.callbacks.onTransformCommit(this.selected, {
-      position: mesh.position.toArray(),
-      rotation: mesh.quaternion.toArray() as Quat,
-      scale: mesh.scale.toArray(),
-    });
+    if (this.modeling) {
+      if (dragging) this.beginMeshDrag();
+      else this.endMeshDrag();
+      return;
+    }
+
+    const meshes = this.selectedMeshes();
+    if (dragging) {
+      this.pivot.updateMatrix();
+      this.pivotStartInverse.copy(this.pivot.matrix).invert();
+      this.dragStart = new Map(
+        meshes.map((mesh) => {
+          mesh.updateMatrix();
+          return [mesh.userData.partId as PartId, mesh.matrix.clone()];
+        }),
+      );
+      return;
+    }
+
+    if (meshes.length === 0) return;
+    this.callbacks.onTransformCommit(
+      meshes.map((mesh) => ({
+        id: mesh.userData.partId as PartId,
+        position: mesh.position.toArray(),
+        rotation: mesh.quaternion.toArray() as Quat,
+        scale: mesh.scale.toArray(),
+      })),
+    );
+  };
+
+  /** With several parts selected, the gizmo moves the pivot and the parts follow it. */
+  private readonly onGizmoMoved = (): void => {
+    if (this.meshDrag) {
+      this.previewMeshDrag();
+      return;
+    }
+    if (this.gizmo.object !== this.pivot || !this.transforming) return;
+
+    // Stretching a rotated group along one axis would shear its parts, so scale is uniform.
+    if (this.gizmo.getMode() === "scale") {
+      const { x, y, z } = this.pivot.scale;
+      const strongest = [x, y, z].reduce((best, value) =>
+        Math.abs(value - 1) > Math.abs(best - 1) ? value : best,
+      );
+      this.pivot.scale.setScalar(strongest);
+    }
+
+    this.pivot.updateMatrix();
+    const delta = this.pivot.matrix.clone().multiply(this.pivotStartInverse);
+    for (const [id, start] of this.dragStart) {
+      const mesh = this.meshes.get(id);
+      if (!mesh) continue;
+      delta.clone().multiply(start).decompose(mesh.position, mesh.quaternion, mesh.scale);
+      mesh.updateMatrixWorld();
+    }
   };
 
   private readonly onCameraChange = (): void => {
-    const distance = this.camera.position.distanceTo(this.orbit.target);
-    // From far away the 25 cm grid turns into visual noise.
-    this.fineGrid.visible = distance < FINE_GRID_RANGE;
-    // The ground fades into the horizon at any zoom level.
-    const fog = this.scene.fog as THREE.Fog;
-    fog.near = distance * 1.4 + 10;
-    fog.far = distance * 3.2 + 50;
+    this.fitAtmosphere(this.camera.position.distanceTo(this.orbit.target));
     this.requestRender();
   };
 

@@ -1229,15 +1229,6 @@ export const bodyBlocks: BlockDef[] = [
   hat("cap", "Boné", "#c23b3b", [
     lathe(crownProfile(0.126, 0.02), { at: [0, 0, -0.012] }, 48),
     sphere(0.009, { at: [0, 0.022, -0.012], shade: 0.75 }),
-    ...[0, 60, 120].map((angle) =>
-      torus(0.114, 0.0015, {
-        at: [0, -0.025, -0.012],
-        rot: [0, angle, 0],
-        arc: Math.PI,
-        scale: [1, 0.85, 1],
-        shade: 0.6,
-      }),
-    ),
     loft(
       [
         [0.08, 0.1, 0.008, 3, -0.072],

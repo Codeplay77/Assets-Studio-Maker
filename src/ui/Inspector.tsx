@@ -1,17 +1,13 @@
 import { useEffect, useState } from "react";
 import * as THREE from "three";
-import { CopyPlus, Pipette, RotateCw, Trash2, X } from "lucide-react";
+import { CopyPlus, Group, PencilRuler, RotateCw, SquaresIntersect, SquaresSubtract, SquaresUnite, Trash2, Ungroup, X } from "lucide-react";
 import { getBlock } from "../blocks/catalog";
-import { selectedPart, useEditor } from "../core/store";
+import { useEditor, useSelectedParts } from "../core/store";
 import type { Part, Vec3 } from "../core/types";
-import { duplicateSelection, removeSelection } from "./actions";
-
-const PALETTE = [
-  "#ffffff", "#f2c9a0", "#c68642", "#8d5524",
-  "#e5484d", "#f76b15", "#ffc53d", "#3fae5a",
-  "#1ef5a6", "#12a594", "#3f8cff", "#2d3a55",
-  "#7a3fd1", "#e93d82", "#8a9bb0", "#2b2f38",
-];
+import { duplicateSelection, recolorSelection, removeSelection, setSelectionGrouped } from "./actions";
+import { ModelingPanel } from "./ModelingPanel";
+import { Palette } from "./Palette";
+import { combineSelected, convertToShape, isShapePart, startModeling } from "./modeling";
 
 const AXES = ["x", "y", "z"] as const;
 
@@ -70,26 +66,6 @@ function Vec3Row({ label, value, onCommit }: { label: string; value: Vec3; onCom
   );
 }
 
-function Palette({ value, onPick }: { value: string; onPick(color: string): void }) {
-  return (
-    <div className="palette">
-      {PALETTE.map((color) => (
-        <button
-          key={color}
-          className={`swatch ${color === value ? "active" : ""}`}
-          style={{ background: color }}
-          onClick={() => onPick(color)}
-          aria-label={`Cor ${color}`}
-        />
-      ))}
-      <label className="swatch custom" title="Escolher outra cor">
-        <Pipette size={14} />
-        <input type="color" value={value} onChange={(event) => onPick(event.target.value)} />
-      </label>
-    </div>
-  );
-}
-
 function toDegrees(part: Part): Vec3 {
   const euler = new THREE.Euler().setFromQuaternion(new THREE.Quaternion(...part.rotation));
   return [euler.x, euler.y, euler.z].map(THREE.MathUtils.radToDeg) as Vec3;
@@ -113,7 +89,7 @@ function PartEditor({ part }: { part: Part }) {
           <small>Peça selecionada</small>
           <h2>{getBlock(part.block).name}</h2>
         </div>
-        <button className="icon-button" onClick={() => select(null)} aria-label="Limpar seleção">
+        <button className="icon-button" onClick={() => select([])} aria-label="Limpar seleção">
           <X size={16} />
         </button>
       </header>
@@ -126,6 +102,90 @@ function PartEditor({ part }: { part: Part }) {
       <Vec3Row label="Rotação" value={toDegrees(part)} onCommit={(degrees) => update({ rotation: fromDegrees(degrees) })} />
       <Vec3Row label="Tamanho" value={part.scale} onCommit={(scale) => update({ scale })} />
 
+      <div className="actions">
+        <button
+          className="button primary"
+          onClick={() => startModeling(part)}
+          title={isShapePart(part) ? "Editar faces, arestas e pontos (Tab)" : "Transforma em uma forma editável e abre a edição (Tab)"}
+        >
+          <PencilRuler size={15} /> Modelar esta peça
+        </button>
+      </div>
+      <div className="actions">
+        <button className="button" onClick={() => void duplicateSelection()} title="Duplicar (Ctrl+D)">
+          <CopyPlus size={15} /> Duplicar
+        </button>
+        <button className="button danger" onClick={() => void removeSelection()} title="Apagar (Delete)">
+          <Trash2 size={15} /> Apagar
+        </button>
+      </div>
+    </>
+  );
+}
+
+function SelectionEditor({ parts }: { parts: Part[] }) {
+  const select = useEditor((state) => state.select);
+  const firstGroup = parts[0].group;
+  const isOneGroup = firstGroup !== undefined && parts.every((part) => part.group === firstGroup);
+  const firstColor = parts[0].color;
+  const sharedColor = parts.every((part) => part.color === firstColor) ? firstColor : "";
+
+  return (
+    <>
+      <header className="inspector-head">
+        <div>
+          <small>{isOneGroup ? "Grupo selecionado" : "Seleção"}</small>
+          <h2>{parts.length} peças</h2>
+        </div>
+        <button className="icon-button" onClick={() => select([])} aria-label="Limpar seleção">
+          <X size={16} />
+        </button>
+      </header>
+
+      <div className="field">
+        <div className="field-label">Cor de todas</div>
+        <Palette value={sharedColor} onPick={(color) => void recolorSelection(color)} />
+      </div>
+
+      <p className="inspector-tip">
+        Use as setas para mover tudo junto. Clique duas vezes em uma peça para editar só ela.
+      </p>
+
+      <div className="actions">
+        <button
+          className="button primary"
+          onClick={() => void convertToShape(parts)}
+          title="Junta tudo em uma única forma editável, que substitui estas peças"
+        >
+          <PencilRuler size={15} /> Juntar e modelar
+        </button>
+      </div>
+      <div className="field">
+        <div className="field-label">Combinar as formas</div>
+        <div className="combine-row">
+          <button className="button" onClick={() => void combineSelected(parts, "subtract")} title="As outras peças abrem um buraco na peça que você clicou primeiro">
+            <SquaresSubtract size={15} /> Furar
+          </button>
+          <button className="button" onClick={() => void combineSelected(parts, "union")} title="Transforma tudo em uma só casca, sem paredes por dentro">
+            <SquaresUnite size={15} /> Unir
+          </button>
+          <button className="button" onClick={() => void combineSelected(parts, "intersect")} title="Fica só a parte que as peças têm em comum">
+            <SquaresIntersect size={15} /> Comum
+          </button>
+        </div>
+        <p className="inspector-tip">Deixe as peças encostadas. A primeira que você clicou é a que recebe o furo.</p>
+      </div>
+      <div className="actions">
+        {isOneGroup ? (
+          <button className="button" onClick={() => void setSelectionGrouped(false)} title="Desagrupar (Ctrl+Shift+G)">
+            <Ungroup size={15} /> Desagrupar
+          </button>
+        ) : (
+          <button className="button" onClick={() => void setSelectionGrouped(true)} title="Agrupar (Ctrl+G)">
+            <Group size={15} /> Agrupar
+          </button>
+        )}
+      </div>
       <div className="actions">
         <button className="button" onClick={() => void duplicateSelection()} title="Duplicar (Ctrl+D)">
           <CopyPlus size={15} /> Duplicar
@@ -175,13 +235,25 @@ function PlacementEditor({ blockId }: { blockId: string }) {
 }
 
 export function Inspector() {
-  const part = useEditor(selectedPart);
+  const parts = useSelectedParts();
   const placingBlock = useEditor((state) => state.placingBlock);
-  if (!part && !placingBlock) return null;
+  const modelingId = useEditor((state) => state.modeling?.shapeId);
+  const shape = useEditor((state) => state.snapshot?.project.shapes.find((item) => item.id === modelingId));
+
+  if (shape) {
+    return (
+      <aside className="inspector glass modeling-panel">
+        <ModelingPanel key={shape.id} shape={shape} />
+      </aside>
+    );
+  }
+  if (parts.length === 0 && !placingBlock) return null;
 
   return (
     <aside className="inspector glass">
-      {part ? <PartEditor key={part.id} part={part} /> : <PlacementEditor blockId={placingBlock!} />}
+      {parts.length === 1 && <PartEditor key={parts[0].id} part={parts[0]} />}
+      {parts.length > 1 && <SelectionEditor parts={parts} />}
+      {parts.length === 0 && <PlacementEditor blockId={placingBlock!} />}
     </aside>
   );
 }

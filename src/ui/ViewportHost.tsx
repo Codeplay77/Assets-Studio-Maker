@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 import { useEditor } from "../core/store";
 import type { Quat } from "../core/types";
+import { setActiveViewport } from "../viewport/active";
 import { EditorViewport } from "../viewport/EditorViewport";
+import { commitVertices } from "./modeling";
 
 export function ViewportHost() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -14,6 +16,16 @@ export function ViewportHost() {
   const placementYaw = useEditor((state) => state.placementYaw);
   const tool = useEditor((state) => state.tool);
   const focusRequest = useEditor((state) => state.focusRequest);
+  const snap = useEditor((state) => state.snap);
+  const modeling = useEditor((state) => state.modeling);
+  const meshMode = useEditor((state) => state.meshMode);
+  const meshFaces = useEditor((state) => state.meshFaces);
+  const meshVertices = useEditor((state) => state.meshVertices);
+  const softRadius = useEditor((state) => state.softRadius);
+  const brushKind = useEditor((state) => state.brushKind);
+  const brushRadius = useEditor((state) => state.brushRadius);
+  const brushStrength = useEditor((state) => state.brushStrength);
+  const brushSymmetry = useEditor((state) => state.brushSymmetry);
 
   useEffect(() => {
     const viewport = new EditorViewport(containerRef.current!, {
@@ -27,11 +39,19 @@ export function ViewportHost() {
           ...(color ? { color } : {}),
         });
       },
-      onSelect: (id) => useEditor.getState().select(id),
-      onTransformCommit(id, values) {
+      onPick: (id, mode) => useEditor.getState().pick(id, mode),
+      onMeshPick: (hit, additive) => useEditor.getState().pickMesh(hit, additive),
+      onMeshBox: (hit, additive) => useEditor.getState().selectMeshBox(hit, additive),
+      onMeshTransform(vertices) {
+        void commitVertices(vertices).then((saved) => {
+          const current = useEditor.getState().snapshot;
+          if (!saved && current) viewport.setProject(current.project);
+        });
+      },
+      onTransformCommit(updates) {
         void useEditor
           .getState()
-          .dispatch({ type: "updatePart", id, ...values })
+          .dispatch({ type: "updateParts", updates })
           .then((result) => {
             // A rejected change must not stay on screen.
             const current = useEditor.getState().snapshot;
@@ -40,12 +60,14 @@ export function ViewportHost() {
       },
     });
     viewportRef.current = viewport;
+    setActiveViewport(viewport);
 
     // Without this, a remount (StrictMode) would start empty until the next change.
     const current = useEditor.getState();
     if (current.snapshot) viewport.setProject(current.snapshot.project);
     return () => {
       viewportRef.current = null;
+      setActiveViewport(null);
       viewport.dispose();
     };
   }, []);
@@ -60,6 +82,16 @@ export function ViewportHost() {
   );
   useEffect(() => viewportRef.current?.setYawSteps(placementYaw), [placementYaw]);
   useEffect(() => viewportRef.current?.setTool(tool), [tool]);
+  useEffect(() => viewportRef.current?.setSnap(snap), [snap]);
+  useEffect(() => {
+    viewportRef.current?.setModeling(
+      modeling,
+      { mode: meshMode, faces: meshFaces, vertices: meshVertices },
+      softRadius,
+      { kind: brushKind, radius: brushRadius, strength: brushStrength, symmetry: brushSymmetry },
+    );
+  }, [modeling, meshMode, meshFaces, meshVertices, softRadius, project, brushKind, brushRadius, brushStrength, brushSymmetry]);
+  // Runs after the effect above, so framing knows when a shape is being edited.
   useEffect(() => {
     if (focusRequest > 0) viewportRef.current?.focus();
   }, [focusRequest]);

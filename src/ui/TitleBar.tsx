@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
+  Bot,
   Copy,
+  Download,
+  FilePlus2,
   Focus,
+  FolderOpen,
+  Magnet,
   Minus,
   Move3d,
   Redo2,
   Rotate3d,
+  Save,
   Scale3d,
   Square,
   Undo2,
@@ -15,6 +21,7 @@ import {
 } from "lucide-react";
 import { useEditor } from "../core/store";
 import type { Tool } from "../core/types";
+import { newProject, openProject, saveProject } from "./actions";
 
 const TOOLS: { id: Tool; label: string; key: string; icon: LucideIcon }[] = [
   { id: "translate", label: "Mover", key: "W", icon: Move3d },
@@ -57,13 +64,33 @@ export function TitleBar() {
   const undo = useEditor((state) => state.undo);
   const redo = useEditor((state) => state.redo);
   const requestFocus = useEditor((state) => state.requestFocus);
+  const snap = useEditor((state) => state.snap);
+  const toggleSnap = useEditor((state) => state.toggleSnap);
+  const projectName = useEditor((state) => state.snapshot?.project.name ?? "");
+  const dirty = useEditor((state) => state.snapshot?.dirty ?? false);
+  const partCount = useEditor((state) => state.snapshot?.project.parts.length ?? 0);
+  const setExportOpen = useEditor((state) => state.setExportOpen);
+  const setAgentOpen = useEditor((state) => state.setAgentOpen);
+  const agentRunning = useEditor((state) => state.agentStatus?.running ?? false);
 
   return (
     <header className="titlebar" data-tauri-drag-region>
-      <div className="brand" data-tauri-drag-region>
+      <div className="titlebar-left" data-tauri-drag-region>
         <span className="brand-mark" aria-hidden />
-        <span data-tauri-drag-region>
-          Assets <b>Studio</b> Maker
+        <div className="file-actions">
+          <button className="tool square" onClick={newProject} title="Novo (Ctrl+N)" aria-label="Novo projeto">
+            <FilePlus2 size={16} strokeWidth={1.9} />
+          </button>
+          <button className="tool square" onClick={openProject} title="Abrir (Ctrl+O)" aria-label="Abrir projeto">
+            <FolderOpen size={16} strokeWidth={1.9} />
+          </button>
+          <button className="tool square" onClick={() => void saveProject()} title="Salvar (Ctrl+S)" aria-label="Salvar projeto">
+            <Save size={16} strokeWidth={1.9} />
+          </button>
+        </div>
+        <span className="project-name" data-tauri-drag-region title={projectName}>
+          {projectName}
+          {dirty && <i className="dirty-dot" title="Alterações não salvas" />}
         </span>
       </div>
 
@@ -87,12 +114,39 @@ export function TitleBar() {
           <Redo2 size={17} strokeWidth={1.9} />
         </button>
         <i className="divider" />
+        <button
+          className={`tool square ${snap ? "on" : ""}`}
+          onClick={toggleSnap}
+          title={snap ? "Alinhar à grade: ligado" : "Alinhar à grade: desligado"}
+          aria-label="Alinhar à grade"
+          aria-pressed={snap}
+        >
+          <Magnet size={17} strokeWidth={1.9} />
+        </button>
         <button className="tool square" onClick={requestFocus} title="Enquadrar (F)" aria-label="Enquadrar">
           <Focus size={17} strokeWidth={1.9} />
         </button>
       </div>
 
-      <WindowControls />
+      <div className="titlebar-right" data-tauri-drag-region>
+        <button
+          className={`tool square agent-button ${agentRunning ? "on" : ""}`}
+          onClick={() => setAgentOpen(true)}
+          title={agentRunning ? "Agente de IA: ligado" : "Agente de IA"}
+          aria-label="Agente de IA"
+        >
+          <Bot size={17} strokeWidth={1.9} />
+        </button>
+        <button
+          className="button primary export-button"
+          onClick={() => setExportOpen(true)}
+          disabled={partCount === 0}
+          title="Exportar GLB (Ctrl+E)"
+        >
+          <Download size={15} /> Exportar
+        </button>
+        <WindowControls />
+      </div>
     </header>
   );
 }
