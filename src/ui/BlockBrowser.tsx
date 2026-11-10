@@ -120,7 +120,7 @@ export function BlockBrowser({ group }: { group: BlockCategory["group"] }) {
         )}
       </div>
 
-      {group === "library" && <p className="credit">Modelos CC0 por Kenney (kenney.nl)</p>}
+      {group === "library" && <p className="credit">Modelos CC0 de Kenney, Quaternius e Poly Haven</p>}
     </div>
   );
 }

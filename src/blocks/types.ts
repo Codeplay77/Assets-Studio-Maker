@@ -24,6 +24,8 @@ export interface BodyDeform {
   taperTo?: number;
 }
 
+export type ModelPackName = "models" | "interior";
+
 export type Finish = "matte" | "gloss" | "metal" | "glass" | "glow";
 
 /**
@@ -50,8 +52,11 @@ export type Primitive =
   | { kind: "tube"; path: Vec3[]; radius: number[]; radial?: number; steps?: number; flat?: number }
   /** An irregular ball, for rocks and foliage. */
   | { kind: "lumpy"; radius: number; detail: number; amount: number; seed: number; frequency?: number }
-  /** An imported model, stored in the model pack (see scripts/import-models.ts). */
-  | { kind: "model"; model: string; offset: number; vertices: number; min: Vec3; max: Vec3 }
+  /**
+   * An imported model, stored in the model pack (see scripts/import-models.ts) or, with
+   * `pack: "interior"`, in the furniture pack (see scripts/import-interior.ts).
+   */
+  | { kind: "model"; model: string; pack?: ModelPackName; offset: number; vertices: number; min: Vec3; max: Vec3 }
   /** A zone of a model made in Blender, stored in the vehicle pack (see tools/blender/). */
   | { kind: "baked"; offset: number; vertices: number; indices: number; min: Vec3; max: Vec3 }
   | { kind: "icosahedron"; radius: number; detail?: number }

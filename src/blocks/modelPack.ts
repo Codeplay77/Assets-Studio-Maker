@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { Primitive } from "./types";
+import type { ModelPackName, Primitive } from "./types";
 
 type ModelShape = Extract<Primitive, { kind: "model" }>;
 type BakedShape = Extract<Primitive, { kind: "baked" }>;
@@ -9,11 +9,12 @@ const BYTES_PER_VERTEX = 12;
 /** Int16 x 3 position and int8 x 3 normal. */
 const BAKED_VERTEX_BYTES = 9;
 
-let pack: DataView | null = null;
+const packs: Partial<Record<ModelPackName, DataView>> = {};
 let vehiclePack: DataView | null = null;
 
-export function setModelPack(buffer: ArrayBuffer): void {
-  pack = new DataView(buffer);
+/** The pack of ready-made models: `models` for the city kits, `interior` for furniture. */
+export function setModelPack(buffer: ArrayBuffer, name: ModelPackName = "models"): void {
+  packs[name] = new DataView(buffer);
 }
 
 export function setVehiclePack(buffer: ArrayBuffer): void {
@@ -28,8 +29,13 @@ async function fetchPack(url: string): Promise<ArrayBuffer> {
 
 /** Must finish before any block is built, so the catalog can stay synchronous. */
 export async function loadModelPack(): Promise<void> {
-  const [models, vehicles] = await Promise.all([fetchPack("/models/pack.bin"), fetchPack("/models/vehicles.bin")]);
+  const [models, interior, vehicles] = await Promise.all([
+    fetchPack("/models/pack.bin"),
+    fetchPack("/models/interior.bin"),
+    fetchPack("/models/vehicles.bin"),
+  ]);
   setModelPack(models);
+  setModelPack(interior, "interior");
   setVehiclePack(vehicles);
 }
 
@@ -58,6 +64,7 @@ export function decodeBaked(shape: BakedShape): THREE.BufferGeometry {
 }
 
 export function decodeModel(shape: ModelShape): THREE.BufferGeometry {
+  const pack = packs[shape.pack ?? "models"];
   if (!pack) throw new Error("O pacote de modelos ainda não foi carregado");
   const { offset, vertices, min, max } = shape;
   const positions = new Float32Array(vertices * 3);

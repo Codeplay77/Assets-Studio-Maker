@@ -10,6 +10,8 @@ import type { BlockShape } from "./types";
 beforeAll(() => {
   const file = readFileSync(new URL("../../public/models/pack.bin", import.meta.url));
   setModelPack(file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer);
+  const interior = readFileSync(new URL("../../public/models/interior.bin", import.meta.url));
+  setModelPack(interior.buffer.slice(interior.byteOffset, interior.byteOffset + interior.byteLength) as ArrayBuffer, "interior");
   const vehicles = readFileSync(new URL("../../public/models/vehicles.bin", import.meta.url));
   setVehiclePack(vehicles.buffer.slice(vehicles.byteOffset, vehicles.byteOffset + vehicles.byteLength) as ArrayBuffer);
 });

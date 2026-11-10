@@ -211,8 +211,6 @@ const houseBody = (color: string, id: string, name: string, door: string): Block
     stackSockets(HOUSE_HEIGHT),
   );
 
-// --- street furniture -------------------------------------------------------------------
-
 function prop(
   id: string,
   name: string,

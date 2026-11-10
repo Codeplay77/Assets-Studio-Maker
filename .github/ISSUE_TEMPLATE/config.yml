@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Relatar uma falha de segurança
+    url: https://github.com/Codeplay77/Assets-Studio-Maker/security
+    about: Use o relato privado da aba Security, não uma issue pública.

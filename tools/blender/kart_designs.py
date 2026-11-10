@@ -303,9 +303,6 @@ def build_dragster():
         tail_lamp(s * 0.2, -1.04, 0.28, 0.1)
 
 
-# --- spoilers that the game does not have -----------------------------------------------------
-
-
 def build_spoiler_arc():
     """A hoop over the engine with a small wing on top."""
     kit.rbox("mount", (0.26, 0.07, 0.02), (0, 0, 0.01), mat="metal_dark", bevel=0.005)
@@ -330,9 +327,6 @@ def build_spoiler_jets():
         matrix = Matrix.Translation((x, -0.2, 0.2)) @ Matrix.Rotation(pi / 2, 4, "Z")
         kit.lathe("nozzle_core", [(0.0, 0.056), (-0.03, 0.05), (-0.03, 0.0005)], 18, mat="metal_dark", sharp_angle=40.0, mtx=matrix)
         kit.lathe("flame", [(-0.03, 0.046), (-0.1, 0.04), (-0.18, 0.012), (-0.2, 0.0005)], 16, mat="z_amber", sharp_angle=70.0, mtx=matrix)
-
-
-# --- helmets ----------------------------------------------------------------------------------
 
 
 def build_helmet_retro():
@@ -373,9 +367,6 @@ def build_helmet_horns():
         points = [base, base + V((s * 0.1, 0.0, 0.05)), base + V((s * 0.15, -0.01, 0.15)), base + V((s * 0.14, -0.04, 0.27))]
         kit.tube("horn", points, 1.0, radii=[0.044, 0.034, 0.02, 0.003], smooth=4, n=12, mat="paint_accent")
     return helmet
-
-
-# --- signs for service vehicles ---------------------------------------------------------------
 
 
 def build_taxi_sign():

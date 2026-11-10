@@ -33,7 +33,6 @@ function partMatrix(part: Part): THREE.Matrix4 {
   );
 }
 
-/** Whether a merged quad would still be a convex polygon. */
 function isConvex(vertices: Vec3[], quad: number[], normal: Vec3): boolean {
   return quad.every((vertex, i) => {
     const next = quad[(i + 1) % quad.length];

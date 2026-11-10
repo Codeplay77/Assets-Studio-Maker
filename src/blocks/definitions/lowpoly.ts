@@ -259,7 +259,7 @@ const FACET_YAW = 15;
 const EYE_X = 0.046;
 const EYE_Z = -0.0075;
 
-/** A disc turned to lie on the facet, where `yaw` says which way it faces. */
+/** A disc turned to lie on the facet, where `side` says which way it faces. */
 const facing = (side: number): Vec3 => [90, 0, -side * FACET_YAW];
 
 function face(id: string, name: string, color: string, pieces: ShapePiece[]): BlockDef {
@@ -448,8 +448,6 @@ const soleSlab = (color: string) => box([0.104, 0.02, 0.295], { at: [0, -0.06, 0
 function shoe(id: string, name: string, color: string, pieces: ShapePiece[]): BlockDef {
   return block(`lp.shoe_${id}`, name, "body", color, compound(pieces), SOLE);
 }
-
-// ------------------------------------------------------------------------------------------
 
 function hips(id: string, name: string, rings: LoftRing[], hipX: number, belt: number): BlockDef {
   return block(

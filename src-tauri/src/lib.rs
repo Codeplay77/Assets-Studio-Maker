@@ -321,57 +321,5 @@ pub fn run() {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn file_names_are_made_safe_for_windows() {
-        assert_eq!(safe_file_name("Carro: novo?"), "Carro_ novo_");
-        assert_eq!(safe_file_name("  ...  "), "modelo");
-        assert_eq!(safe_file_name("cidade."), "cidade");
-    }
-
-    #[test]
-    fn a_chosen_name_cannot_leave_the_folder() {
-        assert_eq!(safe_file_name("../../Windows/x"), ".._.._Windows_x");
-        assert_eq!(safe_file_name(".."), "modelo");
-        assert_eq!(safe_file_name(r"C:\temp\x"), "C__temp_x");
-    }
-
-    #[test]
-    fn reserved_windows_names_are_changed() {
-        assert_eq!(safe_file_name("CON"), "modelo_CON");
-        assert_eq!(safe_file_name("nul.teste"), "modelo_nul.teste");
-        assert_eq!(safe_file_name("console"), "console");
-    }
-
-    #[test]
-    fn long_names_are_cut() {
-        assert_eq!(safe_file_name(&"a".repeat(500)).chars().count(), MAX_FILE_NAME_CHARS);
-    }
-
-    #[test]
-    fn exports_never_reuse_a_name() {
-        let dir = std::env::temp_dir().join(format!("asm-unused-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        assert_eq!(unused_path(&dir, "a", "glb"), dir.join("a.glb"));
-        fs::write(dir.join("a.glb"), b"1").unwrap();
-        assert_eq!(unused_path(&dir, "a", "glb"), dir.join("a (2).glb"));
-        fs::write(dir.join("a (2).glb"), b"2").unwrap();
-        assert_eq!(unused_path(&dir, "a", "glb"), dir.join("a (3).glb"));
-        fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn writing_replaces_the_file_and_leaves_no_temporary() {
-        let dir = std::env::temp_dir().join(format!("asm-test-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("modelo.glb");
-
-        write_atomically(&path, b"um").unwrap();
-        write_atomically(&path, b"dois").unwrap();
-        assert_eq!(fs::read(&path).unwrap(), b"dois");
-        assert!(!path.with_extension("asm-tmp").exists());
-        fs::remove_dir_all(&dir).unwrap();
-    }
-}
+#[path = "tests/lib.rs"]
+mod tests;

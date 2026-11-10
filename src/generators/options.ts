@@ -5,6 +5,7 @@ import { kindsOf, modelsOf, VEHICLE_KINDS, vehicleModelName } from "./car";
 import { HOUSE_COLORS, ROOF_COLORS, treeKinds, WALL_COLORS } from "./buildings";
 import { PAINT_PALETTE } from "./kart";
 import { HAIR_COLORS, SKIN_TONES } from "./person";
+import { ROOM_NAMES, SINGLE_ROOMS, WALL_COLORS as ROOM_WALLS } from "./interior";
 
 /** The choice that leaves a decision to the seed. */
 export const ANY = "any";
@@ -362,4 +363,57 @@ export const CITY_OPTIONS: GeneratorOption[] = [
     ]),
   },
   { id: "traffic", label: "Carros na rua", choices: yesNo },
+];
+
+export const INTERIOR_OPTIONS: GeneratorOption[] = [
+  {
+    id: "kind",
+    label: "Tipo",
+    choices: fixed([
+      { id: "house", label: "Casa" },
+      { id: "apartment", label: "Apartamento" },
+      { id: "office", label: "Escritório" },
+      { id: "shop", label: "Loja" },
+      { id: "restaurant", label: "Restaurante" },
+      { id: "room", label: "Um cômodo" },
+    ]),
+  },
+  {
+    id: "room",
+    label: "Cômodo",
+    choices: fixed(SINGLE_ROOMS.map((id) => ({ id, label: ROOM_NAMES[id] }))),
+    applies: ({ options }) => options.kind === "room",
+  },
+  {
+    id: "size",
+    label: "Tamanho",
+    choices: fixed([
+      { id: "small", label: "Pequeno" },
+      { id: "medium", label: "Médio" },
+      { id: "large", label: "Grande" },
+    ]),
+  },
+  {
+    id: "furniture",
+    label: "Móveis",
+    choices: fixed([
+      { id: "none", label: "Sem móveis" },
+      { id: "basic", label: "Básico" },
+      { id: "full", label: "Completo" },
+    ]),
+  },
+  {
+    id: "floor",
+    label: "Piso (salas e quartos)",
+    choices: fixed([
+      { id: "wood", label: "Madeira" },
+      { id: "tile", label: "Cerâmica" },
+      { id: "carpet", label: "Carpete" },
+      { id: "concrete", label: "Cimento" },
+      { id: "checker", label: "Xadrez" },
+    ]),
+  },
+  { id: "wall", label: "Paredes", choices: (style) => ROOM_WALLS[style].map((color) => ({ id: color, label: color, color })) },
+  { id: "doors", label: "Portas", choices: yesNo },
+  { id: "ceiling", label: "Teto", choices: yesNo },
 ];

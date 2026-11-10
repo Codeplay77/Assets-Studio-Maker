@@ -1,0 +1,33 @@
+name: Sugerir uma ideia
+description: Um gerador, uma peça, uma ferramenta ou uma melhoria
+labels: ["sugestão"]
+body:
+  - type: textarea
+    id: ideia
+    attributes:
+      label: A ideia
+      description: O que você gostaria de fazer no editor e ainda não consegue.
+      placeholder: Queria gerar animais com animações, para colocar numa fazenda.
+    validations:
+      required: true
+  - type: textarea
+    id: uso
+    attributes:
+      label: Para que você usaria
+      description: O jogo ou o projeto em que isso ajudaria.
+  - type: dropdown
+    id: estilos
+    attributes:
+      label: Estilos
+      description: Em que estilos isso faz sentido. Tudo o que é gerado precisa existir nos quatro.
+      multiple: true
+      options:
+        - Low poly
+        - Realista
+        - Blocos
+        - Arcade
+  - type: textarea
+    id: referencias
+    attributes:
+      label: Referências
+      description: Imagens ou links que mostrem o que você imagina. Modelos de terceiros só entram no editor se forem CC0.

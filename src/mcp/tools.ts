@@ -1216,7 +1216,6 @@ const tools: Tool[] = [
   },
 ];
 
-/** The character a part belongs to. */
 async function characterOf(part: PartId, deps: ToolDeps) {
   const { project } = await deps.getState();
   const rig = findRigs(project.parts).find((candidate) => candidate.parts.some((item) => item.id === part));

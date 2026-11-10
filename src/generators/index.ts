@@ -9,6 +9,7 @@ import {
   BUILDING_OPTIONS,
   CITY_OPTIONS,
   HOUSE_OPTIONS,
+  INTERIOR_OPTIONS,
   MAP_OPTIONS,
   PERSON_OPTIONS,
   TREE_OPTIONS,
@@ -16,6 +17,7 @@ import {
   type GeneratorOption,
   type GeneratorSettings,
 } from "./options";
+import { buildInterior } from "./interior";
 import { buildPerson } from "./person";
 import { Rng } from "./rng";
 import { buildMap } from "./terrain";
@@ -54,6 +56,12 @@ export const generators: Generator[] = [
     name: "Casa",
     options: HOUSE_OPTIONS,
     build: (asm, rng, { style, options }) => buildHouse(asm, rng, { style, ...options }),
+  },
+  {
+    id: "interior",
+    name: "Interior",
+    options: INTERIOR_OPTIONS,
+    build: (asm, rng, { style, options }) => buildInterior(asm, rng, { style, ...options }),
   },
   {
     id: "tree",

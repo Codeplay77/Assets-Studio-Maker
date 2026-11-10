@@ -34,7 +34,6 @@ export function onWall(angle: number, depth: number, pieces: ShapePiece[]): Shap
 
 interface WindowOptions {
   shutters?: boolean;
-  /** Glowing at night and in the Neon style. */
   lit?: boolean;
 }
 

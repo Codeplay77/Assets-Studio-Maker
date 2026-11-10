@@ -6,10 +6,18 @@
   "description": "Editor de assets 3D por blocos para quem está começando a criar jogos.",
   "author": "CodePlay77",
   "license": "MIT",
+  "homepage": "https://github.com/Codeplay77/Assets-Studio-Maker#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Codeplay77/Assets-Studio-Maker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Codeplay77/Assets-Studio-Maker/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "catalog": "node scripts/build-catalog.ts",
     "tauri": "tauri"
   },

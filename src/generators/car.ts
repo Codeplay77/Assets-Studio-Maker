@@ -109,8 +109,7 @@ function buildModel(asm: Assembler, rng: Rng, options: VehicleOptions, kind: str
   const service = SERVICE_PAINT[kind];
   // A colored stripe on the tire suits sports and race cars, not a family car or a truck.
   const racing = kind === "sport" || kind === "race";
-  // Realista picks the colors of real vehicles: no lime green family cars, no racing stripes on
-  // them. The other styles keep the bright toy palette.
+  // Realista uses real-world vehicle colors; the other styles keep the bright toy palette.
   const real = options.style === "realistic";
   const heavy = spec.group === "truck" || spec.group === "bus" || spec.group === "semi";
   const paint = service?.paint ?? chosen(options.paint) ?? (real ? rng.fork("paint").pick(REAL_PAINTS) : rng.fork("paint").pick(PAINT_PALETTE));

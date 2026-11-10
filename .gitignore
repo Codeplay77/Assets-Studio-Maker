@@ -12,3 +12,12 @@ src-tauri/gen/
 .DS_Store
 Thumbs.db
 __pycache__/
+
+# Os testes ficam só na máquina de quem desenvolve; o repositório leva o necessário para compilar e usar.
+*.test.ts
+*.test.tsx
+src-tauri/src/tests/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
