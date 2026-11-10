@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { getBlock } from "../blocks/catalog";
-import type { Quat, Vec3 } from "../core/types";
+import { getBlock, hasBlock } from "../blocks/catalog";
+import type { GeneratedShape, Quat, Vec3 } from "../core/types";
 import { alignToSurface, worldSockets, type WorldSocket } from "../viewport/placement";
 
 export interface GeneratedPart {
@@ -37,6 +37,13 @@ function toScale(scale: PartOptions["scale"]): THREE.Vector3 {
 /** Builds a model part by part, using the same sockets a person clicks in the editor. */
 export class Assembler {
   readonly parts: AssembledPart[] = [];
+  readonly shapes: GeneratedShape[] = [];
+
+  /** A mesh made for this model. Returns the block id its parts use. */
+  addShape(shape: GeneratedShape): string {
+    this.shapes.push(shape);
+    return `@${this.shapes.length - 1}`;
+  }
 
   add(block: string, position: Vec3, options: PartOptions = {}): AssembledPart {
     return this.push({
@@ -68,6 +75,31 @@ export class Assembler {
       scale,
     );
     return this.push({ block, position, quaternion, scale, color: options.color });
+  }
+
+  /** Adds a block exactly where another one is, for models painted in several layers. */
+  overlay(part: AssembledPart, block: string, options: Pick<PartOptions, "color"> = {}): AssembledPart {
+    return this.push({
+      block,
+      position: part.position.clone(),
+      quaternion: part.quaternion.clone(),
+      scale: part.scale.clone(),
+      color: options.color,
+    });
+  }
+
+  /** Turns everything added since `from` around the origin, then moves it to a spot. */
+  place(from: number, position: Vec3, angle: number): void {
+    const turn = new THREE.Quaternion().setFromAxisAngle(UP, angle);
+    const offset = new THREE.Vector3(...position);
+    for (const part of this.parts.slice(from)) {
+      part.position.applyQuaternion(turn).add(offset);
+      part.quaternion.premultiply(turn);
+    }
+  }
+
+  hasBlock(id: string): boolean {
+    return hasBlock(id);
   }
 
   socketOf(part: AssembledPart, id: string): WorldSocket {

@@ -19,6 +19,8 @@ const MIN_SCALE: f64 = 0.01;
 const IDENTITY_ROTATION: [f64; 4] = [0.0, 0.0, 0.0, 1.0];
 const UNIT_SCALE: [f64; 3] = [1.0, 1.0, 1.0];
 const SHAPE_PREFIX: &str = "shape.";
+/// How the parts of a generated model refer to the shapes created along with them.
+const NEW_SHAPE_PREFIX: char = '@';
 const MAX_SHAPES: usize = 512;
 const MAX_SHAPE_VERTICES: usize = 20_000;
 const MAX_SHAPE_FACES: usize = 20_000;
@@ -80,6 +82,9 @@ pub struct ShapeMaterial {
     pub shade: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish: Option<Finish>,
+    /// Takes its colors from the shape's `vertex_colors`, so they blend across the faces.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub painted: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -115,6 +120,12 @@ pub struct CustomShape {
     /// Attachment points. Left empty, the editor derives them from the shape's bounds.
     #[serde(default)]
     pub sockets: Vec<ShapeSocket>,
+    /// One 0xRRGGBB color per vertex, for materials that are painted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub vertex_colors: Vec<u32>,
+    /// Made by a generator: it goes away together with the model that uses it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub generated: bool,
 }
 
 fn first_group() -> GroupId {
@@ -187,6 +198,12 @@ pub enum Command {
         /// Puts the new parts in one group, so they move as a single model.
         #[serde(default)]
         group: bool,
+        /// Parts that go away in the same undo step, for swapping one model for another.
+        #[serde(default)]
+        remove: Vec<PartId>,
+        /// Shapes made for this model. A part uses one through the block id `@index`.
+        #[serde(default)]
+        shapes: Vec<CustomShape>,
     },
     UpdatePart {
         id: PartId,
@@ -392,6 +409,13 @@ fn normalize_shape(shape: &mut CustomShape) -> Result<(), String> {
     for vertex in &shape.vertices {
         check_coordinates(vertex, "um vértice")?;
     }
+    // Editing can add or remove vertices; the paint then no longer lines up with them.
+    if shape.vertex_colors.len() != shape.vertices.len() {
+        shape.vertex_colors.clear();
+    }
+    if shape.vertex_colors.iter().any(|color| *color > 0xFF_FFFF) {
+        return Err("uma cor de vértice é inválida".to_string());
+    }
     for face in &shape.faces {
         check_face(face, shape.vertices.len())?;
     }
@@ -443,6 +467,12 @@ fn default_block_color(project: &Project, block: &str, catalog: &Catalog) -> Opt
         return Some(shape.color.clone());
     }
     catalog.default_color(block).map(str::to_string)
+}
+
+/// A shape made by a generator has no use without the parts of its model.
+fn drop_unused_generated_shapes(project: &mut Project) {
+    let used: HashSet<&str> = project.parts.iter().map(|part| part.block.as_str()).collect();
+    project.shapes.retain(|shape| !shape.generated || used.contains(shape.id.as_str()));
 }
 
 fn take_group_id(project: &mut Project) -> GroupId {
@@ -526,14 +556,41 @@ fn execute(
             parts,
             replace,
             group,
+            remove,
+            shapes,
         } => {
             if replace {
                 project.parts.clear();
             }
+            // A part that is already gone is fine: the goal is that it not be there.
+            let remove: HashSet<PartId> = remove.into_iter().collect();
+            project.parts.retain(|part| !remove.contains(&part.id));
+            drop_unused_generated_shapes(project);
+
+            let mut new_shapes = Vec::with_capacity(shapes.len());
+            for mut shape in shapes {
+                normalize_shape(&mut shape)?;
+                shape.id = format!("{SHAPE_PREFIX}{}", project.next_shape);
+                project.next_shape += 1;
+                shape.generated = true;
+                new_shapes.push(shape.id.clone());
+                project.shapes.push(Arc::new(shape));
+            }
+            check_shape_totals(project)?;
+
             let group = (group && parts.len() > 1).then(|| take_group_id(project));
             parts
                 .into_iter()
-                .map(|part| add_part(project, part, group, catalog))
+                .map(|mut part| {
+                    if let Some(index) = part.block.strip_prefix(NEW_SHAPE_PREFIX) {
+                        part.block = index
+                            .parse::<usize>()
+                            .ok()
+                            .and_then(|index| new_shapes.get(index).cloned())
+                            .ok_or_else(|| format!("forma nova inexistente: \"{}\"", part.block))?;
+                    }
+                    add_part(project, part, group, catalog)
+                })
                 .collect()
         }
         Command::UpdatePart {
@@ -577,6 +634,7 @@ fn execute(
         }
         Command::RemoveParts { ids } => {
             remove_existing_parts(project, &ids)?;
+            drop_unused_generated_shapes(project);
             Ok(ids)
         }
         Command::DuplicateParts { ids, offset } => {
@@ -1062,6 +1120,40 @@ mod tests {
     }
 
     #[test]
+    fn swapping_a_model_is_one_undo_step() {
+        let catalog = catalog();
+        let mut editor = Editor::default();
+        let old = editor
+            .apply(
+                Command::AddParts {
+                    parts: vec![new_part("basic.cube"), new_part("basic.plate")],
+                    replace: false,
+                    group: true,
+                    remove: vec![],
+                    shapes: vec![],
+                },
+                &catalog,
+            )
+            .unwrap();
+        editor
+            .apply(
+                Command::AddParts {
+                    parts: vec![new_part("nature.rock")],
+                    replace: false,
+                    group: true,
+                    remove: old.clone(),
+                    shapes: vec![],
+                },
+                &catalog,
+            )
+            .unwrap();
+        let blocks: Vec<_> = editor.project.parts.iter().map(|part| part.block.as_str()).collect();
+        assert_eq!(blocks, ["nature.rock"]);
+        editor.undo();
+        assert_eq!(editor.project.parts.len(), 2);
+    }
+
+    #[test]
     fn a_batch_is_one_undo_step() {
         let catalog = catalog();
         let mut editor = Editor::default();
@@ -1072,6 +1164,8 @@ mod tests {
                     parts: vec![new_part("basic.plate"), new_part("nature.rock")],
                     replace: true,
                     group: false,
+                    remove: vec![],
+                    shapes: vec![],
                 },
                 &catalog,
             )
@@ -1095,6 +1189,8 @@ mod tests {
                 parts: vec![new_part("basic.plate"), new_part("nope")],
                 replace: true,
                 group: false,
+                remove: vec![],
+                shapes: vec![],
             },
             &catalog,
         );
@@ -1109,6 +1205,8 @@ mod tests {
                     parts: vec![new_part("basic.cube"), new_part("basic.plate")],
                     replace: false,
                     group: true,
+                    remove: vec![],
+                    shapes: vec![],
                 },
                 catalog,
             )
@@ -1148,6 +1246,8 @@ mod tests {
                     parts: vec![new_part("basic.cube")],
                     replace: false,
                     group: true,
+                    remove: vec![],
+                    shapes: vec![],
                 },
                 &catalog,
             )
@@ -1276,6 +1376,8 @@ mod tests {
             materials: Vec::new(),
             smooth_angle: DEFAULT_SMOOTH_ANGLE,
             sockets: Vec::new(),
+            vertex_colors: Vec::new(),
+            generated: false,
         }
     }
 
@@ -1315,6 +1417,57 @@ mod tests {
         assert_eq!(shape.materials.len(), 1);
         assert_eq!(project.parts[0].block, "shape.1");
         assert_eq!(project.parts[0].color, "#ff8800");
+    }
+
+    #[test]
+    fn generated_shapes_arrive_with_their_parts_and_leave_with_them() {
+        let catalog = catalog();
+        let mut editor = Editor::default();
+        let build = |remove: Vec<u64>| {
+            serde_json::from_value::<Command>(serde_json::json!({
+                "type": "addParts",
+                "replace": false,
+                "group": true,
+                "remove": remove,
+                "shapes": [{
+                    "name": "Terreno",
+                    "color": "#00ff00",
+                    "vertices": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
+                    "faces": [[0, 2, 1]],
+                }],
+                "parts": [{ "block": "@0", "position": [0.0, 0.0, 0.0] }],
+            }))
+            .unwrap()
+        };
+
+        let first = editor.apply(build(vec![]), &catalog).unwrap();
+        let project = &editor.snapshot().project;
+        assert_eq!(project.shapes.len(), 1);
+        assert!(project.shapes[0].generated);
+        assert_eq!(project.parts[0].block, project.shapes[0].id);
+
+        // Rebuilding the model must not leave the old ground behind.
+        let second = editor.apply(build(first.clone()), &catalog).unwrap();
+        assert_eq!(editor.snapshot().project.shapes.len(), 1);
+        assert_eq!(editor.snapshot().project.parts.len(), 1);
+
+        editor.apply(Command::RemoveParts { ids: second }, &catalog).unwrap();
+        assert!(editor.snapshot().project.shapes.is_empty());
+        assert!(editor.undo());
+        assert_eq!(editor.snapshot().project.shapes.len(), 1);
+    }
+
+    #[test]
+    fn a_part_cannot_use_a_new_shape_that_does_not_exist() {
+        let catalog = catalog();
+        let mut editor = Editor::default();
+        let command = serde_json::from_value::<Command>(serde_json::json!({
+            "type": "addParts",
+            "replace": false,
+            "parts": [{ "block": "@3", "position": [0.0, 0.0, 0.0] }],
+        }))
+        .unwrap();
+        assert!(editor.apply(command, &catalog).is_err());
     }
 
     #[test]

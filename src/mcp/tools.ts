@@ -21,7 +21,8 @@ import type {
   Vec3,
 } from "../core/types";
 import { blockTriangles, countTriangles, type ExportOptions } from "../export/glb";
-import { generators } from "../generators";
+import { ART_STYLES, blocksStyle, DEFAULT_STYLE, styleName, styleOfBlock, type ArtStyle } from "../blocks/styles";
+import { generators, validateSettings, type GeneratorSettings } from "../generators";
 import { convertParts } from "../modeling/convert";
 import {
   DEFAULT_SMOOTH_ANGLE,
@@ -90,7 +91,7 @@ export interface ToolDeps {
   apply(command: Command): Promise<PartId[]>;
   undo(): Promise<void>;
   redo(): Promise<void>;
-  generate(generator: string, seed: number, keep: boolean): Promise<PartId[]>;
+  generate(generator: string, seed: number, keep: boolean, settings: GeneratorSettings): Promise<PartId[]>;
   /** Returns a base64 JPEG. */
   capture(view: CaptureView, width: number, height: number, ids?: PartId[]): Promise<string>;
   frame(): Promise<void>;
@@ -148,6 +149,32 @@ function readString(args: Args, key: string): string {
   const value = args[key];
   if (typeof value !== "string" || value === "") throw new Error(`"${key}" precisa ser um texto`);
   return value;
+}
+
+function readStringMap(args: Args, key: string): Record<string, string> {
+  const value = args[key];
+  if (value === undefined) return {};
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${key} precisa ser um objeto`);
+  for (const [name, choice] of Object.entries(value)) {
+    if (typeof choice !== "string") throw new Error(`${key}.${name} precisa ser texto`);
+  }
+  return value as Record<string, string>;
+}
+
+/** Lets an agent see every option without another call. Choices that depend on the style are marked. */
+function describeGeneratorOptions(): string {
+  return generators
+    .map(({ id, options }) => {
+      const parts = options.map((option) => {
+        if (option.describe) return `${option.id}(${option.describe()})`;
+        const perStyle = ART_STYLES.map(({ id: style }) => option.choices(style).map((choice) => choice.id).join("|"));
+        const same = new Set(perStyle).size === 1;
+        const choices = same ? perStyle[0] : ART_STYLES.map(({ id: style }, index) => `${style}: ${perStyle[index]}`).join("; ");
+        return `${option.id}(${choices})`;
+      });
+      return `${id}: ${parts.join(", ")}.`;
+    })
+    .join(" ");
 }
 
 function readOptionalString(args: Args, key: string): string | undefined {
@@ -447,6 +474,7 @@ const tools: Tool[] = [
     inputSchema: object({
       query: { type: "string" },
       category: { type: "string", description: "A category id." },
+      style: { type: "string", enum: ART_STYLES.map(({ id }) => id), description: "Only blocks of this art style, plus plain shapes that fit any style." },
       limit: { type: "integer", minimum: 1, maximum: MAX_SEARCH_LIMIT, description: "Defaults to 30." },
       offset: { type: "integer", minimum: 0 },
     }),
@@ -456,9 +484,14 @@ const tools: Tool[] = [
       if (category && category !== CUSTOM_CATEGORY && !categories.some((candidate) => candidate.id === category)) {
         throw new Error(`categoria desconhecida: ${category}`);
       }
+      const style = readOptionalString(args, "style");
+      if (style && !ART_STYLES.some(({ id }) => id === style)) throw new Error(`estilo desconhecido: ${style}`);
       const terms = withoutAccents(query).split(/\s+/).filter(Boolean);
       const found = [...customBlocks(), ...blocks].filter(
-        (block) => (!category || block.category === category) && matchesQuery(block, terms),
+        (block) =>
+          (!category || block.category === category) &&
+          (!style || [style, null].includes(styleOfBlock(block.id))) &&
+          matchesQuery(block, terms),
       );
       const offset = readNumber(args, "offset", 0);
       const limit = Math.min(MAX_SEARCH_LIMIT, readNumber(args, "limit", DEFAULT_SEARCH_LIMIT));
@@ -468,6 +501,7 @@ const tools: Tool[] = [
           id: block.id,
           name: block.name,
           category: block.category,
+          style: styleOfBlock(block.id),
           size: roundAll(blockBounds(block.id).getSize(new THREE.Vector3()).toArray()),
           sockets: block.sockets.map((socket) => socket.id),
         })),
@@ -497,6 +531,7 @@ const tools: Tool[] = [
         id: block.id,
         name: block.name,
         category: block.category,
+        style: styleOfBlock(block.id),
         defaultColor: block.color,
         triangles: blockTriangles(block.id),
         ...describeBox(blockBounds(block.id)),
@@ -974,11 +1009,21 @@ const tools: Tool[] = [
     name: "generate",
     title: "Generate a model",
     description:
-      "Builds a complete random model with one of the editor's generators. The same seed gives the same model. By default it goes beside what's already in the scene.",
+      `Builds a complete model with one of the editor's generators. The same seed and settings give the same model. By default it goes beside what's already in the scene, and it must then use the scene's art style. Options narrow the result; anything left out is decided by the seed. ${describeGeneratorOptions()}`,
     activity: "Gerando modelo",
     inputSchema: object(
       {
         generator: { type: "string", enum: generators.map((generator) => generator.id) },
+        style: {
+          type: "string",
+          enum: ART_STYLES.map(({ id }) => id),
+          description: "Defaults to the style already in the scene, or lowpoly in an empty scene.",
+        },
+        options: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description: "Option id to choice id, for example {\"sex\":\"female\",\"age\":\"child\"}.",
+        },
         seed: { type: "integer", description: "Defaults to a random number." },
         keep: { type: "boolean", description: "False replaces the whole scene. Defaults to true." },
       },
@@ -990,8 +1035,18 @@ const tools: Tool[] = [
         throw new Error(`gerador desconhecido: ${generator}`);
       }
       const seed = readNumber(args, "seed", Math.floor(Math.random() * SEED_RANGE));
-      const created = await deps.generate(generator, seed, readBoolean(args, "keep", true));
-      return text({ seed, created });
+      const keep = readBoolean(args, "keep", true);
+      const inScene = keep ? blocksStyle((await deps.getState()).project.parts.map((part) => part.block)) : null;
+      const style = (readOptionalString(args, "style") as ArtStyle | undefined) ?? inScene ?? DEFAULT_STYLE;
+      if (inScene && style !== inScene && ART_STYLES.some(({ id }) => id === style)) {
+        throw new Error(
+          `a cena já está no estilo ${styleName(inScene)} (${inScene}) e os estilos não podem ser misturados. Use style "${inScene}", ou keep false para substituir a cena.`,
+        );
+      }
+      const settings: GeneratorSettings = { style, options: readStringMap(args, "options") };
+      validateSettings(generator, settings);
+      const created = await deps.generate(generator, seed, keep, settings);
+      return text({ seed, style, created });
     },
   },
   {

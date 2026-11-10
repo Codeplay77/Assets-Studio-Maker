@@ -2,20 +2,59 @@ import * as THREE from "three";
 import type { Primitive } from "./types";
 
 type ModelShape = Extract<Primitive, { kind: "model" }>;
+type BakedShape = Extract<Primitive, { kind: "baked" }>;
 
 const BYTES_PER_VERTEX = 12;
 
+/** Int16 x 3 position and int8 x 3 normal. */
+const BAKED_VERTEX_BYTES = 9;
+
 let pack: DataView | null = null;
+let vehiclePack: DataView | null = null;
 
 export function setModelPack(buffer: ArrayBuffer): void {
   pack = new DataView(buffer);
 }
 
+export function setVehiclePack(buffer: ArrayBuffer): void {
+  vehiclePack = new DataView(buffer);
+}
+
+async function fetchPack(url: string): Promise<ArrayBuffer> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Falha ao carregar os modelos: ${response.status}`);
+  return response.arrayBuffer();
+}
+
 /** Must finish before any block is built, so the catalog can stay synchronous. */
 export async function loadModelPack(): Promise<void> {
-  const response = await fetch("/models/pack.bin");
-  if (!response.ok) throw new Error(`Falha ao carregar os modelos: ${response.status}`);
-  setModelPack(await response.arrayBuffer());
+  const [models, vehicles] = await Promise.all([fetchPack("/models/pack.bin"), fetchPack("/models/vehicles.bin")]);
+  setModelPack(models);
+  setVehiclePack(vehicles);
+}
+
+/** Expands a Blender zone into plain triangles, which is what block geometry is merged from. */
+export function decodeBaked(shape: BakedShape): THREE.BufferGeometry {
+  if (!vehiclePack) throw new Error("O pacote de veículos ainda não foi carregado");
+  const { offset, vertices, indices, min, max } = shape;
+  const view = vehiclePack;
+  const firstIndex = offset + vertices * BAKED_VERTEX_BYTES;
+  const positions = new Float32Array(indices * 3);
+  const normals = new Float32Array(indices * 3);
+  for (let i = 0; i < indices; i++) {
+    const vertex = view.getUint16(firstIndex + i * 2, true);
+    const at = offset + vertex * BAKED_VERTEX_BYTES;
+    for (let axis = 0; axis < 3; axis++) {
+      const value = (view.getInt16(at + axis * 2, true) + 32767) / 65534;
+      positions[i * 3 + axis] = min[axis] + value * (max[axis] - min[axis]);
+      normals[i * 3 + axis] = view.getInt8(at + 6 + axis) / 127;
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+  geometry.normalizeNormals();
+  return geometry;
 }
 
 export function decodeModel(shape: ModelShape): THREE.BufferGeometry {

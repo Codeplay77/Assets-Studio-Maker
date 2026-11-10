@@ -23,9 +23,10 @@ export function meshToBlockShape(mesh: PolyMesh): BlockShape {
     else byMaterial.set(material, [face]);
   });
   const pieces = [...byMaterial].map(([material, faces]): ShapePiece => {
-    const { color, shade, finish } = mesh.materials[material];
+    const { color, shade, finish, painted } = mesh.materials[material];
+    const colors = painted && mesh.vertexColors?.length === mesh.vertices.length ? mesh.vertexColors : undefined;
     return {
-      shape: { kind: "polygons", vertices: mesh.vertices, faces, crease: mesh.smoothAngle },
+      shape: { kind: "polygons", vertices: mesh.vertices, faces, crease: mesh.smoothAngle, ...(colors ? { colors } : {}) },
       ...(color ? { color } : {}),
       ...(shade === undefined ? {} : { shade }),
       ...(finish ? { finish } : {}),
@@ -90,6 +91,18 @@ export function syncCustomBlocks(shapes: readonly CustomShape[], revision: numbe
 
 export function customBlocks(): BlockDef[] {
   return [...custom.values()].map(({ block }) => block);
+}
+
+/** A color layer only makes sense on top of its model, so lists leave it out. */
+export function isColorLayer(id: string): boolean {
+  return /_(paint|trim|accent|band|stripe)$/.test(id) || /\.veh_.*_rim$/.test(id);
+}
+
+/** What has to be placed with a block for the model to come out whole. */
+export function layersOf(id: string): string[] {
+  const suffix = id.endsWith("_base") ? "_base" : /\.wheel_.*_rim$/.test(id) ? "_rim" : "";
+  const stem = suffix ? id.slice(0, -suffix.length) : id;
+  return ["paint", "trim", "accent", "rim", "band", "stripe"].map((layer) => `${stem}_${layer}`).filter((layer) => layer !== id && hasBlock(layer));
 }
 
 export function hasBlock(id: string): boolean {

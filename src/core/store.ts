@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { create } from "zustand";
 import { syncCustomBlocks } from "../blocks/catalog";
+import { DEFAULT_STYLE, type ArtStyle } from "../blocks/styles";
 import type { BrushKind } from "../modeling/sculpt";
 import * as api from "./api";
 import type { AgentStatus, Command, CustomShape, EditorSnapshot, Part, PartId, PickMode, Tool } from "./types";
@@ -60,6 +61,16 @@ interface EditorStore {
   brushRadius: number;
   brushStrength: number;
   brushSymmetry: boolean;
+  /** The style everything generated in this session follows. */
+  artStyle: ArtStyle;
+  /** The generator whose options are open on the right. */
+  generatorOpen: string | null;
+  generatorSeed: number;
+  /** True once the panel built a model, so changing an option updates that model. */
+  generatorLive: boolean;
+  generatorKeep: boolean;
+  /** For each generator, the choice made for each option. */
+  generatorChoices: Record<string, Record<string, string>>;
 
   receiveSnapshot(snapshot: EditorSnapshot): void;
   dispatch(command: Command): Promise<PartId[] | null>;
@@ -101,6 +112,13 @@ interface EditorStore {
   setBrushStrength(strength: number): void;
   setBrushSymmetry(symmetry: boolean): void;
   selectMeshBox(box: MeshBox, additive: boolean): void;
+  setArtStyle(style: ArtStyle): void;
+  openGenerator(id: string): void;
+  closeGenerator(): void;
+  setGeneratorSeed(seed: number): void;
+  setGeneratorLive(live: boolean): void;
+  setGeneratorKeep(keep: boolean): void;
+  setGeneratorChoice(generator: string, option: string, choice: string): void;
 }
 
 const MIN_BRUSH_RADIUS = 0.02;
@@ -160,6 +178,12 @@ export const useEditor = create<EditorStore>((set, get) => {
     brushRadius: 0.3,
     brushStrength: 0.5,
     brushSymmetry: false,
+    artStyle: DEFAULT_STYLE,
+    generatorOpen: null,
+    generatorSeed: 1,
+    generatorLive: false,
+    generatorKeep: false,
+    generatorChoices: {},
 
     // Events and the initial fetch can arrive out of order; the revision settles it.
     receiveSnapshot(snapshot) {
@@ -305,6 +329,26 @@ export const useEditor = create<EditorStore>((set, get) => {
       set({ brushRadius: Math.min(MAX_BRUSH_RADIUS, Math.max(MIN_BRUSH_RADIUS, brushRadius)) }),
     setBrushStrength: (brushStrength) => set({ brushStrength }),
     setBrushSymmetry: (brushSymmetry) => set({ brushSymmetry }),
+
+    setArtStyle: (artStyle) => set({ artStyle }),
+    openGenerator: (generatorOpen) =>
+      set((state) => ({
+        generatorOpen,
+        generatorLive: state.generatorOpen === generatorOpen && state.generatorLive,
+        selection: [],
+        placingBlock: null,
+      })),
+    closeGenerator: () => set({ generatorOpen: null, generatorLive: false }),
+    setGeneratorSeed: (generatorSeed) => set({ generatorSeed }),
+    setGeneratorLive: (generatorLive) => set({ generatorLive }),
+    setGeneratorKeep: (generatorKeep) => set({ generatorKeep }),
+    setGeneratorChoice: (generator, option, choice) =>
+      set((state) => ({
+        generatorChoices: {
+          ...state.generatorChoices,
+          [generator]: { ...state.generatorChoices[generator], [option]: choice },
+        },
+      })),
 
     selectMeshBox(box, additive) {
       const { meshFaces, meshVertices } = get();

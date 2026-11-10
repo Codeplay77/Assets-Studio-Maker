@@ -26,6 +26,15 @@ export interface BodyDeform {
 
 export type Finish = "matte" | "gloss" | "metal" | "glass" | "glow";
 
+/**
+ * Catalog blocks have two more finishes than the shapes a person models: car paint under a clear
+ * coat, and tinted glass you can see through.
+ */
+export type BlockFinish = Finish | "paint" | "tint";
+
+/** The visual family of a block. Everything generated for one project shares a single style. */
+export type ArtStyle = "lowpoly" | "realistic" | "blocks" | "arcade";
+
 export type Primitive =
   | { kind: "box"; size: Vec3 }
   | { kind: "roundedBox"; size: Vec3; radius: number }
@@ -43,6 +52,8 @@ export type Primitive =
   | { kind: "lumpy"; radius: number; detail: number; amount: number; seed: number; frequency?: number }
   /** An imported model, stored in the model pack (see scripts/import-models.ts). */
   | { kind: "model"; model: string; offset: number; vertices: number; min: Vec3; max: Vec3 }
+  /** A zone of a model made in Blender, stored in the vehicle pack (see tools/blender/). */
+  | { kind: "baked"; offset: number; vertices: number; indices: number; min: Vec3; max: Vec3 }
   | { kind: "icosahedron"; radius: number; detail?: number }
   | { kind: "dodecahedron"; radius: number }
   | { kind: "torus"; radius: number; tube: number; arc?: number }
@@ -53,7 +64,7 @@ export type Primitive =
   /** An [x, z] floor outline extruded upward from y = 0. */
   | { kind: "slab"; points: Point[]; height: number }
   /** Free polygons, from a shape made in the editor. `crease` is in degrees. */
-  | { kind: "polygons"; vertices: Vec3[]; faces: number[][]; crease: number };
+  | { kind: "polygons"; vertices: Vec3[]; faces: number[][]; crease: number; colors?: number[] };
 
 export interface ShapePiece {
   shape: Primitive;
@@ -65,7 +76,9 @@ export interface ShapePiece {
   color?: string;
   /** Darkens a piece that follows the part's color. */
   shade?: number;
-  finish?: Finish;
+  finish?: BlockFinish;
+  /** Keeps every polygon visibly flat, for the low poly look. */
+  faceted?: boolean;
 }
 
 export type BlockShape = Primitive | { kind: "compound"; pieces: ShapePiece[] };

@@ -21,6 +21,8 @@ export interface PolyMesh {
   /** The first one has no color, so those faces follow the color of the part. */
   materials: ShapeMaterial[];
   smoothAngle: number;
+  /** One color per vertex, for painted materials. */
+  vertexColors?: number[];
 }
 
 export type Axis = 0 | 1 | 2;

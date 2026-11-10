@@ -29,6 +29,8 @@ export const sphere = (radius: number, options?: PieceOptions) =>
   piece({ kind: "sphere", radius }, options);
 export const capsule = (radius: number, length: number, options?: PieceOptions) =>
   piece({ kind: "capsule", radius, length }, options);
+export const icosahedron = (radius: number, detail: number, options?: PieceOptions) =>
+  piece({ kind: "icosahedron", radius, detail }, options);
 export const lumpy = (
   radius: number,
   seed: number,

@@ -379,18 +379,135 @@ button:disabled {
   font-size: 11.5px;
 }
 
-.generator-footer {
+.style-picker,
+.style-filter {
+  display: grid;
+  flex: none;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.style-picker button,
+.style-filter button {
+  height: 32px;
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.style-filter button {
+  height: 26px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.style-picker button:hover:not(:disabled),
+.style-filter button:hover {
+  color: var(--text);
+}
+
+.style-picker button.active,
+.style-filter button.active {
+  background: var(--gradient);
+  color: var(--accent-ink);
+  font-weight: 650;
+}
+
+.style-picker button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.style-lock {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.style-lock svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.inspector.generator-options {
+  width: 292px;
+  padding-bottom: 12px;
+}
+
+.generator-title {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+
+.generator-icon.small {
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  border-radius: 9px;
+}
+
+.option-list {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 11px;
+  margin-right: -6px;
+  padding-right: 6px;
+  overflow-y: auto;
+}
+
+.option-row {
   display: flex;
   flex-direction: column;
+  gap: 5px;
+}
+
+.option-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.option-swatches .swatch {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+.generator-actions {
+  display: flex;
+  flex: none;
+  flex-direction: column;
   gap: 8px;
-  margin-top: auto;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
 
-.seed-row {
-  display: flex;
-  gap: 6px;
+.generator-actions .button {
+  justify-content: center;
+}
+
+.seed-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.seed-field .input {
+  height: 30px;
 }
 
 .input,

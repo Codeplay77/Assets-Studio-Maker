@@ -1,82 +1,155 @@
+import { BAKED_SPECS, bakedModels, BAKED_WHEEL_IDS, BAKED_WHEEL_WIDTH, KART_IDS, KART_NAMES, WHEEL_RADIUS, type Axle } from "../blocks/definitions/family/baked.ts";
+import { STYLE_PREFIX, type ArtStyle } from "../blocks/styles";
 import type { Vec3 } from "../core/types";
-import type { Assembler } from "./assembler";
+import type { AssembledPart, Assembler } from "./assembler";
+import { addLayers, addWheel, buildKart, differentColor, PAINT_PALETTE } from "./kart";
+import { KIT_TRACTORS } from "./kit";
 import type { Rng } from "./rng";
 
-const PAINT = [
-  "#c23b3b", "#2f7fd1", "#e8e4d8", "#23252c", "#8a939f", "#e0a81f", "#3a7d6b", "#7a3fd1", "#f26b1d", "#d6dde6",
-];
-
-type WheelKind = "steel" | "sport" | "star" | "whitewall" | "offroad" | "heavy" | "slick" | "kart";
-
-const WHEEL_RADIUS: Record<WheelKind, number> = {
-  steel: 0.33,
-  sport: 0.34,
-  star: 0.33,
-  whitewall: 0.33,
-  offroad: 0.42,
-  heavy: 0.52,
-  slick: 0.33,
-  kart: 0.14,
+/** Every kind of vehicle and its models. They are the same in all the art styles. */
+const MODELS: Record<string, string[]> = {
+  car: ["sedan", "sedan_luxo", "hatch", "perua", "compacto", "conversivel", "classico", "eletrico"],
+  sport: ["coupe", "hatch_esportivo", "muscle", "super"],
+  suv: ["suv_compacto", "suv_medio", "suv_grande", "jipe", "suv_esportivo"],
+  pickup: ["picape", "picape_dupla", "picape_classica"],
+  van: ["van", "furgao"],
+  truck: bakedModels("truck").filter((id) => id !== "caminhao_bombeiros"),
+  bus: bakedModels("bus"),
+  semi: bakedModels("semi"),
+  moto: bakedModels("moto"),
+  kart: KART_IDS,
+  race: ["super", "muscle", "coupe"],
+  taxi: ["sedan", "hatch"],
+  police: ["policia_sedan", "policia_suv"],
+  ambulance: ["ambulancia"],
+  firetruck: ["caminhao_bombeiros"],
 };
 
-interface CarKind {
-  radius: number;
-  wheels: WheelKind[];
-}
-
-export const CAR_KINDS: Record<string, CarKind> = {
-  sedan: { radius: 0.33, wheels: ["steel", "star", "whitewall", "sport"] },
-  hatch: { radius: 0.31, wheels: ["steel", "star", "sport"] },
-  suv: { radius: 0.42, wheels: ["offroad", "star", "sport"] },
-  pickup: { radius: 0.4, wheels: ["offroad", "steel"] },
-  sport: { radius: 0.34, wheels: ["sport", "star"] },
-  van: { radius: 0.36, wheels: ["steel"] },
-  bus: { radius: 0.52, wheels: ["heavy"] },
-  truck: { radius: 0.5, wheels: ["heavy"] },
-  race: { radius: 0.33, wheels: ["slick"] },
-  kart: { radius: 0.14, wheels: ["kart"] },
+/** Paint that a service vehicle always has, whatever was picked. */
+const SERVICE_PAINT: Record<string, { paint: string; trim: string; accent: string }> = {
+  taxi: { paint: "#ffc400", trim: "#121316", accent: "#f4f4f4" },
+  police: { paint: "#1c2233", trim: "#f4f4f4", accent: "#e8202a" },
+  ambulance: { paint: "#f4f4f4", trim: "#e8202a", accent: "#e8202a" },
+  firetruck: { paint: "#e8202a", trim: "#f4f4f4", accent: "#ffc400" },
 };
 
-export const STREET_CARS = ["sedan", "hatch", "suv", "pickup", "sport", "van"];
-const ALL_CARS = Object.keys(CAR_KINDS);
+export const VEHICLE_KINDS = Object.keys(MODELS);
+/** Tractors only exist in the low poly library. */
+export const kindsOf = (style: ArtStyle) => (style === "lowpoly" ? [...VEHICLE_KINDS, "tractor"] : VEHICLE_KINDS);
+export const modelsOf = (kind: string | undefined) => (kind ? (MODELS[kind] ?? []) : []);
+export const vehicleModelName = (id: string) => BAKED_SPECS[id]?.name ?? KART_NAMES[id] ?? id;
 
-export interface CarOptions {
+export interface VehicleOptions {
+  style: ArtStyle;
+  kind?: string;
+  model?: string;
+  paint?: string;
+  trim?: string;
+  accent?: string;
+  rim?: string;
+  wheels?: string;
   position?: Vec3;
   yawSteps?: number;
-  kind?: string;
-  color?: string;
+  spoiler?: string;
+  driver?: string;
+  helmet?: string;
+  suit?: string;
+  helmetColor?: string;
 }
 
-export function buildCar(asm: Assembler, rng: Rng, options: CarOptions = {}): void {
-  const kindName = options.kind ?? rng.pick(ALL_CARS);
-  const kind = CAR_KINDS[kindName];
-  const special = kindName === "sedan" ? rng.pick(["none", "none", "taxi", "police"]) : "none";
-  const color =
-    options.color ??
-    (special === "taxi" ? "#f0c94a" : special === "police" ? "#e8e4d8" : rng.pick(PAINT));
+const chosen = (value: string | undefined) => (value && value !== "any" ? value : undefined);
 
-  const body = asm.add(`vehicle.${kindName}`, options.position ?? [0, 0, 0], {
-    color,
-    yawSteps: options.yawSteps,
+/** The colors real vehicles come in: mostly whites, silvers and darks, some reds and blues. */
+const REAL_PAINTS = [
+  "#f1f1ee", "#f1f1ee", "#e6e3da", "#c9ccd1", "#c9ccd1", "#8b9097", "#4a4f56", "#15171a", "#15171a",
+  "#7a1016", "#b8181f", "#1d3557", "#2f5f8f", "#2a4536", "#b7a98c", "#5b3c2a",
+];
+const REAL_RIMS = ["#c3c7cc", "#c3c7cc", "#9aa0a8", "#3a3f47", "#dcdee1"];
+/** Trims and racks of trucks and buses: white, aluminum or black. */
+const REAL_TRIMS = ["#f1f1ee", "#c9ccd1", "#2a2c31"];
+
+function pickReal(rng: Rng, list: string[], other: string): string {
+  let color = rng.pick(list);
+  for (let i = 0; i < 8 && color === other; i++) color = rng.pick(list);
+  return color;
+}
+
+interface VehicleColors {
+  paint: string;
+  trim: string;
+  accent: string;
+  rim: string;
+}
+
+/** Space between the two tires of a dual wheel, in the units of the wheel. */
+const DUAL_GAP = 0.012;
+
+function fitWheels(asm: Assembler, body: AssembledPart, axles: Axle[], prefix: string, wheel: string, colors: VehicleColors, dual: boolean): void {
+  axles.forEach((axle, index) => {
+    const scale = axle.radius / WHEEL_RADIUS;
+    for (const side of ["l", "r"]) {
+      const socket = `wheel_${index}_${side}`;
+      addWheel(asm, body, socket, prefix, wheel, scale, { rim: colors.rim, band: colors.accent });
+      if (!dual || !axle.dual) continue;
+      // The inner tire sits right behind the outer one, toward the middle of the vehicle.
+      const from = asm.parts.length;
+      addWheel(asm, body, socket, prefix, wheel, scale, { rim: colors.rim, band: colors.accent });
+      const inward = asm.socketOf(body, socket).normal.clone().multiplyScalar(-(BAKED_WHEEL_WIDTH[wheel] + DUAL_GAP) * scale);
+      for (const part of asm.parts.slice(from)) part.position.add(inward);
+    }
   });
+}
 
-  const wheel = rng.pick(kind.wheels);
-  const scale = kind.radius / WHEEL_RADIUS[wheel];
-  for (const socket of ["wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"]) {
-    asm.attach(body, socket, `wheel.${wheel}`, { scale });
-  }
+function buildModel(asm: Assembler, rng: Rng, options: VehicleOptions, kind: string): void {
+  const prefix = STYLE_PREFIX[options.style];
+  const models = MODELS[kind];
+  const model = chosen(options.model) && models.includes(options.model!) ? options.model! : rng.fork("model").pick(models);
+  const spec = BAKED_SPECS[model];
 
-  if (special === "taxi") asm.attach(body, "roof", "wheel.taxi_sign");
-  if (special === "police") asm.attach(body, "roof", "wheel.police_bar");
+  const service = SERVICE_PAINT[kind];
+  // A colored stripe on the tire suits sports and race cars, not a family car or a truck.
+  const racing = kind === "sport" || kind === "race";
+  // Realista picks the colors of real vehicles: no lime green family cars, no racing stripes on
+  // them. The other styles keep the bright toy palette.
+  const real = options.style === "realistic";
+  const heavy = spec.group === "truck" || spec.group === "bus" || spec.group === "semi";
+  const paint = service?.paint ?? chosen(options.paint) ?? (real ? rng.fork("paint").pick(REAL_PAINTS) : rng.fork("paint").pick(PAINT_PALETTE));
+  const trim =
+    service?.trim ??
+    chosen(options.trim) ??
+    (!real ? differentColor(rng.fork("trim"), paint) : racing ? pickReal(rng.fork("trim"), REAL_PAINTS, paint) : heavy ? pickReal(rng.fork("trim"), REAL_TRIMS, paint) : paint);
+  const accent = service?.accent ?? chosen(options.accent) ?? (real && !racing ? pickReal(rng.fork("accent"), REAL_PAINTS, paint) : differentColor(rng.fork("accent"), paint));
+  const rim = chosen(options.rim) ?? rng.fork("rim").pick(real ? REAL_RIMS : ["#9aa0a8", "#f4f4f4", "#d4af37", "#3a3f47"]);
+  // Arcade tires always wear the colored band, like the karts of the game.
+  const colors = { paint, trim, accent: racing || options.style === "arcade" ? accent : "#2a2c31", rim };
+  const wheel = chosen(options.wheels) ?? spec.wheel ?? rng.fork("wheels").pick(BAKED_WHEEL_IDS);
+  // The Arcade models are shorter and have bigger wheels; only the Realista ones have dual tires.
+  const arcade = options.style === "arcade";
+  const dual = options.style === "realistic";
 
-  if (kindName === "sport" || (kindName === "sedan" && special === "none" && rng.chance(0.25))) {
-    const spoiler = rng.chance(0.5) ? "wheel.spoiler_wing" : "wheel.spoiler_low";
-    asm.attach(body, "trunk", spoiler);
+  const id = `${prefix}.veh_${spec.trailer ? spec.tractor : model}`;
+  const base = asm.add(`${id}_base`, options.position ?? [0, 0, 0], { yawSteps: options.yawSteps });
+  addLayers(asm, base, id, { paint, trim, accent, rim });
+  fitWheels(asm, base, (arcade && spec.arcadeAxles) || spec.axles, prefix, wheel, colors, dual);
+
+  if (spec.trailer) {
+    const trailerId = `${prefix}.veh_${spec.trailer}`;
+    const trailer = asm.attach(base, "hitch", `${trailerId}_base`);
+    const trailerPaint = real ? pickReal(rng.fork("trailer"), ["#f1f1ee", "#f1f1ee", "#c9ccd1", "#1d3557", "#7a1016", "#2a4536"], "") : differentColor(rng.fork("trailer"), trim);
+    addLayers(asm, trailer, trailerId, { paint: trailerPaint, trim, accent });
+    fitWheels(asm, trailer, (arcade && spec.arcadeTrailerAxles) || spec.trailerAxles!, prefix, wheel, colors, dual);
   }
-  if ((kindName === "suv" || kindName === "hatch") && rng.chance(0.45)) {
-    asm.attach(body, "roof", "wheel.roof_rack");
+  if (kind === "taxi") asm.attach(base, "roof", `${prefix}.veh_taxi_sign`, { color: "#ffc400" });
+  if (kind === "police" || kind === "ambulance") asm.attach(base, "roof", `${prefix}.veh_siren`);
+}
+
+export function buildVehicle(asm: Assembler, rng: Rng, options: VehicleOptions): void {
+  const wanted = chosen(options.kind);
+  if (wanted === "tractor" && options.style === "lowpoly") {
+    asm.add(rng.fork("model").pick(KIT_TRACTORS), options.position ?? [0, 0, 0], { yawSteps: options.yawSteps });
+    return;
   }
-  if ((kindName === "suv" || kindName === "pickup") && rng.chance(0.4)) {
-    asm.attach(body, "front", "wheel.bull_bar");
-  }
+  const kind = wanted && MODELS[wanted] ? wanted : rng.fork("kind").pick(["car", "car", "suv", "pickup", "sport", "van", "truck", "bus", "semi", "moto", "kart", "taxi", "police", "ambulance", "firetruck"]);
+  if (kind === "kart") buildKart(asm, rng, { ...options, body: options.model });
+  else buildModel(asm, rng, options, kind);
 }

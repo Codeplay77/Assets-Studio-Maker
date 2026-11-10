@@ -39,8 +39,9 @@ function limb(
   end: string,
   length: number,
   bumps: Bump[] = [],
+  segments = 20,
 ): BlockDef {
-  return block(`body.${id}`, name, "body", color, compound(loft(rings, { bumps, segments: 20, steps: 3 })), [
+  return block(`body.${id}`, name, "body", color, compound(loft(rings, { bumps, segments, steps: 3 })), [
     socket(top, [0, 0, 0], [0, 1, 0]),
     socket(end, [0, -length, 0], [0, -1, 0]),
   ]);
@@ -59,6 +60,17 @@ const hipsRings: LoftRing[] = [
   [0.018, 0.02, 0.02, 2],
 ];
 
+const hipsRingsFemale: LoftRing[] = [
+  [-0.235, 0.05, 0.05, 2],
+  [-0.225, 0.14, 0.09, 3],
+  [-0.18, 0.176, 0.112, 2.7],
+  [-0.125, 0.186, 0.118, 2.4],
+  [-0.055, 0.17, 0.106, 2.4],
+  [-0.01, 0.138, 0.094, 2.4],
+  [0.012, 0.1, 0.07, 2.2],
+  [0.018, 0.02, 0.02, 2],
+];
+
 const torsoRings: LoftRing[] = [
   [-0.01, 0.1, 0.07, 2.2],
   [0, 0.15, 0.1, 2.4],
@@ -71,8 +83,19 @@ const torsoRings: LoftRing[] = [
   [0.502, 0.04, 0.04, 2],
 ];
 
-const chestShape: Bump[] = [
-  ...both(0.085, 0.33, 0.125, 0.075, 0.012),
+const torsoRingsFemale: LoftRing[] = [
+  [-0.01, 0.09, 0.066, 2.2],
+  [0, 0.135, 0.092, 2.4],
+  [0.07, 0.124, 0.088, 2.4],
+  [0.16, 0.128, 0.09, 2.3],
+  [0.27, 0.16, 0.108, 2.3],
+  [0.36, 0.176, 0.11, 2.4],
+  [0.43, 0.162, 0.094, 2.3],
+  [0.475, 0.1, 0.07, 2],
+  [0.495, 0.04, 0.04, 2],
+];
+
+const chestShape: Bump[] = [  ...both(0.085, 0.33, 0.125, 0.075, 0.012),
   ...both(0.09, 0.34, -0.125, 0.07, 0.008),
   { at: [0, 0.3, -0.13], radius: 0.05, height: -0.007, stretch: [0.5, 3, 1] },
   { at: [0, 0.16, 0.108], radius: 0.05, height: 0.004 },
@@ -81,28 +104,50 @@ const chestShape: Bump[] = [
   ...both(0.075, 0.2, 0.11, 0.05, -0.0035, [1.4, 0.35, 1]),
 ];
 
-const torsoBase = (extra: Omit<ShapePiece, "shape"> = {}) =>
-  loft(torsoRings, { bumps: chestShape, segments: 36, steps: 4, ...extra });
+const chestShapeFemale: Bump[] = [
+  ...both(0.074, 0.285, 0.104, 0.062, 0.036),
+  ...both(0.088, 0.33, -0.105, 0.065, 0.006),
+  { at: [0, 0.3, -0.11], radius: 0.05, height: -0.006, stretch: [0.5, 3, 1] },
+  ...both(0.1, 0.09, 0.08, 0.05, -0.003, [1.6, 0.4, 1]),
+];
 
-const torsoSockets = [
+/** Everything that differs between the two torso shapes. */
+interface TorsoBuild {
+  /** Added to the id and to the name of each torso. */
+  suffix: "" | "_f";
+  rings: LoftRing[];
+  bumps: Bump[];
+  /** How far forward the middle of the chest reaches at each height. */
+  front: [number, number][];
+  hem: { width: number; depth: number };
+  shoulderX: number;
+  shoulderY: number;
+  neckY: number;
+  /** Pushes collars and lapels out, over the bust. */
+  lapelLift: number;
+}
+
+const torsoSockets = (build: TorsoBuild) => [
   socket("waist", [0, 0, 0], [0, -1, 0]),
-  socket("neck", [0, 0.49, 0], [0, 1, 0]),
-  socket("shoulder_left", [0.2, 0.415, 0], [0.38, -0.92, 0]),
-  socket("shoulder_right", [-0.2, 0.415, 0], [-0.38, -0.92, 0]),
+  socket("neck", [0, build.neckY, 0], [0, 1, 0]),
+  socket("shoulder_left", [build.shoulderX, build.shoulderY, 0], [0.38, -0.92, 0]),
+  socket("shoulder_right", [-build.shoulderX, build.shoulderY, 0], [-0.38, -0.92, 0]),
   socket("back", [0, 0.3, -0.125], [0, 0, -1]),
   socket("chest", [0, 0.33, 0.128], [0, 0, 1]),
 ];
 
-function torso(id: string, name: string, color: string, details: ShapePiece[] = []): BlockDef {
-  return block(`body.torso_${id}`, name, "body", color, compound(torsoBase(), details), torsoSockets);
+function torso(build: TorsoBuild, id: string, name: string, color: string, details: ShapePiece[] = []): BlockDef {
+  const base = loft(build.rings, { bumps: build.bumps, segments: 36, steps: 4 });
+  const fullName = build.suffix ? `${name} (fem.)` : name;
+  return block(`body.torso${build.suffix}_${id}`, fullName, "body", color, compound(base, details), torsoSockets(build));
 }
 
-const hem = (options: Omit<ShapePiece, "shape"> = {}) =>
+const hem = (build: TorsoBuild, options: Omit<ShapePiece, "shape"> = {}) =>
   loft(
     [
       [0, 0.1, 0.07, 2.2],
-      [0.002, 0.156, 0.106, 2.4],
-      [0.035, 0.156, 0.106, 2.4],
+      [0.002, build.hem.width, build.hem.depth, 2.4],
+      [0.035, build.hem.width, build.hem.depth, 2.4],
       [0.037, 0.1, 0.07, 2.2],
     ],
     { shade: 0.82, segments: 48, steps: 2, ...options },
@@ -127,30 +172,68 @@ const FRONT: [number, number][] = [
   [0.47, 0.088],
 ];
 
-function frontZ(y: number): number {
-  for (let i = 0; i < FRONT.length - 1; i++) {
-    const [y0, z0] = FRONT[i];
-    const [y1, z1] = FRONT[i + 1];
+const FRONT_FEMALE: [number, number][] = [
+  [0, 0.094],
+  [0.07, 0.09],
+  [0.16, 0.092],
+  [0.27, 0.127],
+  [0.31, 0.132],
+  [0.36, 0.116],
+  [0.43, 0.096],
+  [0.47, 0.076],
+];
+
+const MALE_BUILD: TorsoBuild = {
+  suffix: "",
+  rings: torsoRings,
+  bumps: chestShape,
+  front: FRONT,
+  hem: { width: 0.156, depth: 0.106 },
+  shoulderX: 0.2,
+  shoulderY: 0.415,
+  neckY: 0.49,
+  lapelLift: 0,
+};
+
+const FEMALE_BUILD: TorsoBuild = {
+  suffix: "_f",
+  rings: torsoRingsFemale,
+  bumps: chestShapeFemale,
+  front: FRONT_FEMALE,
+  hem: { width: 0.14, depth: 0.096 },
+  shoulderX: 0.167,
+  shoulderY: 0.395,
+  neckY: 0.485,
+  lapelLift: 0.014,
+};
+
+function frontZ(build: TorsoBuild, y: number): number {
+  const { front } = build;
+  for (let i = 0; i < front.length - 1; i++) {
+    const [y0, z0] = front[i];
+    const [y1, z1] = front[i + 1];
     if (y <= y1) return z0 + ((z1 - z0) * (y - y0)) / (y1 - y0);
   }
-  return FRONT[FRONT.length - 1][1];
+  return front[front.length - 1][1];
 }
 
 /** A thin plate that follows the chest, for shirt fronts and ties. */
 function chestPlate(
+  build: TorsoBuild,
   widths: [number, number][],
   thickness: number,
   lift: number,
   options: Omit<ShapePiece, "shape">,
 ): ShapePiece {
   return loft(
-    widths.map(([y, halfWidth]): LoftRing => [y, halfWidth, thickness, 6, frontZ(y) + lift]),
+    widths.map(([y, halfWidth]): LoftRing => [y, halfWidth, thickness, 6, frontZ(build, y) + lift]),
     { segments: 24, steps: 4, ...options },
   );
 }
 
-const placketStrip = (color: string): ShapePiece =>
+const placketStrip = (build: TorsoBuild, color: string): ShapePiece =>
   chestPlate(
+    build,
     [
       [0.02, 0.03],
       [0.18, 0.03],
@@ -163,16 +246,17 @@ const placketStrip = (color: string): ShapePiece =>
     { color },
   );
 
-function collarFlap(side: number, color?: string): ShapePiece {
+function collarFlap(build: TorsoBuild, side: number, color?: string): ShapePiece {
+  const pull = build.suffix ? -0.018 : 0;
   return loft(
     [
-      [-0.04, 0.003, 0.003, 2, 0.132],
-      [-0.03, 0.017, 0.0035, 4, 0.128],
-      [0.012, 0.024, 0.0035, 4, 0.112],
-      [0.034, 0.016, 0.003, 3, 0.098],
+      [-0.04, 0.003, 0.003, 2, 0.132 + pull],
+      [-0.03, 0.017, 0.0035, 4, 0.128 + pull],
+      [0.012, 0.024, 0.0035, 4, 0.112 + pull],
+      [0.034, 0.016, 0.003, 3, 0.098 + pull],
     ],
     {
-      at: [side * 0.032, 0.438, 0],
+      at: [side * 0.032, build.neckY - 0.052, 0],
       rot: [0, 0, side * 22],
       segments: 20,
       steps: 3,
@@ -181,30 +265,31 @@ function collarFlap(side: number, color?: string): ShapePiece {
   );
 }
 
-const lapels = (): ShapePiece[] =>
+const lapels = (build: TorsoBuild): ShapePiece[] =>
   [1, -1].map((side) =>
     loft(
       [
-        [-0.13, 0.003, 0.003, 2, 0.116],
-        [-0.1, 0.018, 0.004, 4, 0.12],
-        [0, 0.03, 0.004, 4, 0.136],
-        [0.075, 0.03, 0.004, 4, 0.132],
-        [0.125, 0.018, 0.0035, 3, 0.112],
+        [-0.13, 0.003, 0.003, 2, 0.116 + build.lapelLift],
+        [-0.1, 0.018, 0.004, 4, 0.12 + build.lapelLift],
+        [0, 0.03, 0.004, 4, 0.136 + build.lapelLift],
+        [0.075, 0.03, 0.004, 4, 0.132 - build.lapelLift * 0.6],
+        [0.125, 0.018, 0.0035, 3, 0.112 - build.lapelLift * 1.2],
       ],
       { at: [side * 0.056, 0.32, 0], rot: [0, side * 14, side * -9], segments: 20, steps: 4, shade: 0.72 },
     ),
   );
 
-const buttonRow = (ys: number[], color = DARK, lift = 0.013) =>
+const buttonRow = (build: TorsoBuild, ys: number[], color = DARK, lift = 0.013) =>
   ys.map((y) =>
-    cylinder(0.009, 0.009, 0.005, 16, { at: [0, y, frontZ(y) + lift], rot: [90, 0, 0], color }),
+    cylinder(0.009, 0.009, 0.005, 16, { at: [0, y, frontZ(build, y) + lift], rot: [90, 0, 0], color }),
   );
 
 const chestPocket = (shade: number): ShapePiece =>
   roundedBox([0.075, 0.08, 0.006], 0.002, { at: [0.09, 0.3, 0.13], rot: [0, 18, 0], shade });
 
-const necktie = (color: string): ShapePiece[] => [
+const necktie = (build: TorsoBuild, color: string): ShapePiece[] => [
   chestPlate(
+    build,
     [
       [0.17, 0.002],
       [0.19, 0.03],
@@ -216,7 +301,7 @@ const necktie = (color: string): ShapePiece[] => [
     0.008,
     { color, finish: "gloss" },
   ),
-  sphere(0.019, { at: [0, 0.455, 0.104], scale: [1, 0.9, 0.7], color, finish: "gloss" }),
+  sphere(0.019, { at: [0, 0.455, frontZ(build, 0.455) + 0.022], scale: [1, 0.9, 0.7], color, finish: "gloss" }),
 ];
 
 const hood: ShapePiece = loft(
@@ -310,10 +395,12 @@ interface EyeSpec {
   iris?: number;
   squash?: number;
   lidDrop?: number;
+  /** Thickness of the upper lash line. */
+  lash?: number;
 }
 
 function eyeball(side: number, spec: EyeSpec = {}): ShapePiece[] {
-  const { x = 0.05, ball = 0.026, iris = 0.0145, squash = 1, lidDrop = 0 } = spec;
+  const { x = 0.05, ball = 0.026, iris = 0.0145, squash = 1, lidDrop = 0, lash = 1 } = spec;
   const front = EYE_DEPTH + Math.sqrt(ball * ball - iris * iris) + 0.0009;
   const px = side * x;
   const lashY = ball * squash * 0.72 - lidDrop;
@@ -330,9 +417,22 @@ function eyeball(side: number, spec: EyeSpec = {}): ShapePiece[] {
         [px + ball * 0.5, lashY * 0.92, EYE_DEPTH + ball * 0.84],
         [px + ball * 0.98, lashY * 0.35, EYE_DEPTH + ball * 0.42],
       ],
-      [0.0009, 0.0032, 0.0038, 0.0032, 0.0009],
+      [0.0009 * lash, 0.0032 * lash, 0.0038 * lash, 0.0032 * lash, 0.0009 * lash],
       { color: "#16110e", radial: 6, steps: 5 },
     ),
+    // Long lashes end in a small wing at the outer corner.
+    ...(lash > 1
+      ? [
+          tube(
+            [
+              [px + side * ball * 0.9, lashY * 0.42, EYE_DEPTH + ball * 0.46],
+              [px + side * ball * 1.28, lashY * 0.8, EYE_DEPTH + ball * 0.34],
+            ],
+            [0.0028, 0.0008],
+            { color: "#16110e", radial: 5, steps: 2 },
+          ),
+        ]
+      : []),
   ];
 }
 
@@ -381,6 +481,39 @@ function lips(width: number, curve: number, fullness = 1): ShapePiece[] {
 }
 
 const earSockets = [socket("base", [0, 0, 0], [1, 0, 0])];
+
+/**
+ * Attaching turns a left ear half a turn around Y, which swaps front and back. `depth` is -1
+ * for that ear, so both end up as mirror images with the rim facing forward.
+ */
+function ear(id: string, name: string, depth: 1 | -1): BlockDef {
+  return block(
+    id,
+    name,
+    "face",
+    SKIN,
+    compound(
+      loft(
+        [
+          [-0.035, 0.004, 0.006, 2, 0],
+          [-0.03, 0.01, 0.016, 2, 0.002 * depth],
+          [-0.01, 0.012, 0.026, 2, -0.002 * depth],
+          [0.018, 0.012, 0.03, 2, -0.006 * depth],
+          [0.034, 0.01, 0.022, 2, -0.008 * depth],
+          [0.04, 0.003, 0.006, 2, -0.008 * depth],
+        ],
+        { at: [-0.006, 0, 0], segments: 24, steps: 4 },
+      ),
+      torus(0.019, 0.0035, {
+        at: [-0.014, 0.003, -0.006 * depth],
+        rot: [0, 90 * depth, 0],
+        arc: Math.PI * 1.25,
+        shade: 0.84,
+      }),
+    ),
+    earSockets,
+  );
+}
 
 // --- hair ---------------------------------------------------------------------------------
 
@@ -497,19 +630,19 @@ const curls = (seedStart: number): ShapePiece[] => {
   );
 };
 
-export const bodyBlocks: BlockDef[] = [
-  block(
-    "body.hips",
-    "Quadril",
+function hips(id: string, name: string, rings: LoftRing[], hipX: number, belt: number): BlockDef {
+  return block(
+    id,
+    name,
     "body",
     PANTS,
     compound(
-      loft(hipsRings, { segments: 44, steps: 5, bumps: both(0.08, -0.1, -0.11, 0.075, 0.012) }),
+      loft(rings, { segments: 44, steps: 5, bumps: both(0.08, -0.1, -0.11, 0.075, 0.012) }),
       loft(
         [
           [-0.025, 0.11, 0.075, 2.2],
-          [-0.023, 0.158, 0.107, 2.4],
-          [0.006, 0.156, 0.106, 2.4],
+          [-0.023, belt + 0.002, 0.107, 2.4],
+          [0.006, belt, 0.106, 2.4],
           [0.008, 0.11, 0.075, 2.2],
         ],
         { color: "#2a2018", segments: 44, steps: 2 },
@@ -529,77 +662,149 @@ export const bodyBlocks: BlockDef[] = [
     ),
     [
       socket("waist", [0, 0, 0], [0, 1, 0]),
-      socket("hip_left", [0.085, -0.14, 0], [0, -1, 0]),
-      socket("hip_right", [-0.085, -0.14, 0], [0, -1, 0]),
+      socket("hip_left", [hipX, -0.14, 0], [0, -1, 0]),
+      socket("hip_right", [-hipX, -0.14, 0], [0, -1, 0]),
       socket("belt", [0, 0, 0], [0, -1, 0]),
     ],
-  ),
+  );
+}
 
-  torso("tshirt", "Camiseta", SHIRT, [hem(), collarRing(0.082, 0.468)]),
-  torso("jacket", "Jaqueta", "#5b6b3a", [
-    hem(),
-    placketStrip(WHITE),
-    ...lapels(),
-    collarRing(0.085, 0.47),
-    ...pair((side) => [
-      roundedBox([0.09, 0.07, 0.006], 0.002, { at: [side * 0.1, 0.1, 0.099], rot: [0, side * 18, 0], shade: 0.8 }),
+const shirtFront = (build: TorsoBuild, shade: number) =>
+  chestPlate(
+    build,
+    [
+      [0.02, 0.03],
+      [0.3, 0.032],
+      [0.465, 0.03],
+    ],
+    0.005,
+    0.002,
+    { shade },
+  );
+
+function torsos(build: TorsoBuild): BlockDef[] {
+  const pocket = build.suffix ? [] : [chestPocket(0.85)];
+  return [
+    torso(build, "tshirt", "Camiseta", SHIRT, [hem(build), collarRing(0.082, build.neckY - 0.022)]),
+    torso(build, "jacket", "Jaqueta", "#5b6b3a", [
+      hem(build),
+      placketStrip(build, WHITE),
+      ...lapels(build),
+      collarRing(0.085, build.neckY - 0.02),
+      ...pair((side) => [
+        roundedBox([0.09, 0.07, 0.006], 0.002, { at: [side * 0.1, 0.1, 0.099], rot: [0, side * 18, 0], shade: 0.8 }),
+      ]),
     ]),
-  ]),
-  torso("suit", "Terno", "#2c3142", [
-    hem(),
-    placketStrip(WHITE),
-    ...necktie("#b3262e"),
-    ...lapels(),
-    collarRing(0.082, 0.47, WHITE),
-    chestPocket(0.8),
-    ...buttonRow([0.125], "#0f1118", 0.006),
-  ]),
-  torso("hoodie", "Moletom", "#b0413e", [
-    hem(),
-    hood,
-    collarRing(0.09, 0.47),
-    drawstring(1),
-    drawstring(-1),
-    roundedBox([0.22, 0.1, 0.018], 0.008, { at: [0, 0.1, 0.11], shade: 0.8 }),
-  ]),
-  torso("shirt", "Camisa social", "#e8e4d8", [
-    hem({ shade: 0.9 }),
-    chestPlate(
-      [
-        [0.02, 0.03],
-        [0.3, 0.032],
-        [0.465, 0.03],
-      ],
-      0.005,
-      0.002,
-      { shade: 0.9 },
-    ),
-    ...buttonRow([0.11, 0.2, 0.29, 0.38], "#8f8a7e"),
-    collarFlap(1),
-    collarFlap(-1),
-    chestPocket(0.92),
-  ]),
-  torso("uniform", "Uniforme", "#23405f", [
-    hem(),
-    chestPlate(
-      [
-        [0.02, 0.03],
-        [0.3, 0.032],
-        [0.465, 0.03],
-      ],
-      0.005,
-      0.002,
-      { shade: 0.82 },
-    ),
-    ...buttonRow([0.11, 0.2, 0.29, 0.38], GOLD),
-    collarFlap(1),
-    collarFlap(-1),
-    ...pair((side) => [
-      roundedBox([0.1, 0.018, 0.06], 0.006, { at: [side * 0.19, 0.452, 0], rot: [0, 0, side * -14], color: GOLD, finish: "metal" }),
+    torso(build, "suit", "Terno", "#2c3142", [
+      hem(build),
+      placketStrip(build, WHITE),
+      ...necktie(build, "#b3262e"),
+      ...lapels(build),
+      collarRing(0.082, build.neckY - 0.02, WHITE),
+      ...pocket,
+      ...buttonRow(build, [0.125], "#0f1118", 0.006),
     ]),
-    roundedBox([0.05, 0.06, 0.008], 0.003, { at: [-0.09, 0.335, 0.132], rot: [0, -18, 0], color: GOLD, finish: "metal" }),
-    chestPocket(0.85),
-  ]),
+    torso(build, "hoodie", "Moletom", "#b0413e", [
+      hem(build),
+      hood,
+      collarRing(0.09, build.neckY - 0.02),
+      drawstring(1),
+      drawstring(-1),
+      roundedBox([0.22, 0.1, 0.018], 0.008, { at: [0, 0.1, 0.11], shade: 0.8 }),
+    ]),
+    torso(build, "shirt", "Camisa social", "#e8e4d8", [
+      hem(build, { shade: 0.9 }),
+      shirtFront(build, 0.9),
+      ...buttonRow(build, [0.11, 0.2, 0.29, 0.38], "#8f8a7e"),
+      collarFlap(build, 1),
+      collarFlap(build, -1),
+      ...pocket,
+    ]),
+    torso(build, "uniform", "Uniforme", "#23405f", [
+      hem(build),
+      shirtFront(build, 0.82),
+      ...buttonRow(build, [0.11, 0.2, 0.29, 0.38], GOLD),
+      collarFlap(build, 1),
+      collarFlap(build, -1),
+      ...pair((side) => [
+        roundedBox([0.1, 0.018, 0.06], 0.006, {
+          at: [side * (build.shoulderX - 0.01), build.shoulderY + 0.037, 0],
+          rot: [0, 0, side * -14],
+          color: GOLD,
+          finish: "metal",
+        }),
+      ]),
+      roundedBox([0.05, 0.06, 0.008], 0.003, { at: [-0.09, 0.335, 0.132], rot: [0, -18, 0], color: GOLD, finish: "metal" }),
+      ...pocket,
+    ]),
+  ];
+}
+
+/** The thumb sits on `side`: +1 for the left hand and -1 for the right. */
+function hand(id: string, name: string, side: 1 | -1): BlockDef {
+  return block(
+    id,
+    name,
+    "body",
+    SKIN,
+    compound(
+      loft(
+        [
+          [-0.1, 0.026, 0.012, 2.6],
+          [-0.088, 0.043, 0.017, 2.6],
+          [-0.06, 0.045, 0.019, 2.6],
+          [-0.025, 0.04, 0.02, 2.4],
+          [0.0, 0.031, 0.022, 2.2],
+          [0.016, 0.008, 0.008, 2],
+        ],
+        { segments: 24, steps: 4 },
+      ),
+      ...[0.031, 0.0105, -0.0105, -0.031].map((x, index) => {
+        const reach = [0.052, 0.066, 0.068, 0.058][index];
+        const px = side * x;
+        return tube(
+          [
+            [px, -0.088, 0.002],
+            [px * 1.04, -0.09 - reach * 0.45, 0.005],
+            [px * 1.06, -0.09 - reach * 0.8, 0.012],
+            [px * 1.07, -0.09 - reach, 0.022],
+          ],
+          [0.0118, 0.0108, 0.0098, 0.0078],
+          { radial: 6, steps: 3 },
+        );
+      }),
+      tube(
+        [
+          [side * 0.024, -0.03, 0.012],
+          [side * 0.04, -0.055, 0.03],
+          [side * 0.044, -0.08, 0.044],
+          [side * 0.04, -0.1, 0.05],
+        ],
+        [0.016, 0.0135, 0.0115, 0.0088],
+        { radial: 6, steps: 3 },
+      ),
+    ),
+    [socket("wrist", [0, 0, 0], [0, 1, 0]), socket("grip", [0, -0.09, 0.02], [0, 0, 1])],
+  );
+}
+
+export const bodyBlocks: BlockDef[] = [
+  hips("body.hips", "Quadril", hipsRings, 0.085, 0.156),
+  hips("body.hips_f", "Quadril (fem.)", hipsRingsFemale, 0.098, 0.14),
+
+  ...torsos(MALE_BUILD),
+  ...torsos(FEMALE_BUILD),
+  block(
+    "body.torso_f_dress",
+    "Vestido",
+    "body",
+    "#a0335a",
+    compound(
+      loft(FEMALE_BUILD.rings, { bumps: FEMALE_BUILD.bumps, segments: 36, steps: 4 }),
+      collarRing(0.076, FEMALE_BUILD.neckY - 0.03),
+    ),
+    torsoSockets(FEMALE_BUILD),
+  ),
 
   block(
     "body.neck",
@@ -625,6 +830,8 @@ export const bodyBlocks: BlockDef[] = [
   head({ id: "round", name: "Cabeça redonda", width: 1.07, jaw: 1.14, chin: 1.3, depth: 0.98 }),
   head({ id: "square", name: "Cabeça de queixo largo", width: 1.02, jaw: 1.2, chin: 1.65, depth: 1 }),
   head({ id: "long", name: "Cabeça fina", width: 0.93, jaw: 0.86, chin: 0.85, depth: 1.05 }),
+  head({ id: "soft", name: "Cabeça delicada", width: 0.96, jaw: 0.85, chin: 0.8, depth: 0.98 }),
+  head({ id: "heart", name: "Cabeça em coração", width: 1, jaw: 0.8, chin: 0.72, depth: 0.98 }),
 
   limb(
     "upper_arm",
@@ -662,49 +869,9 @@ export const bodyBlocks: BlockDef[] = [
     "wrist",
     0.26,
   ),
-  block(
-    "body.hand",
-    "Mão",
-    "body",
-    SKIN,
-    compound(
-      loft(
-        [
-          [-0.1, 0.026, 0.012, 2.6],
-          [-0.088, 0.043, 0.017, 2.6],
-          [-0.06, 0.045, 0.019, 2.6],
-          [-0.025, 0.04, 0.02, 2.4],
-          [0.0, 0.031, 0.022, 2.2],
-          [0.016, 0.008, 0.008, 2],
-        ],
-        { segments: 24, steps: 4 },
-      ),
-      ...[0.031, 0.0105, -0.0105, -0.031].map((x, index) => {
-        const reach = [0.052, 0.066, 0.068, 0.058][index];
-        return tube(
-          [
-            [x, -0.088, 0.002],
-            [x * 1.04, -0.09 - reach * 0.45, 0.005],
-            [x * 1.06, -0.09 - reach * 0.8, 0.012],
-            [x * 1.07, -0.09 - reach, 0.022],
-          ],
-          [0.0118, 0.0108, 0.0098, 0.0078],
-          { radial: 6, steps: 3 },
-        );
-      }),
-      tube(
-        [
-          [0.024, -0.03, 0.012],
-          [0.04, -0.055, 0.03],
-          [0.044, -0.08, 0.044],
-          [0.04, -0.1, 0.05],
-        ],
-        [0.016, 0.0135, 0.0115, 0.0088],
-        { radial: 6, steps: 3 },
-      ),
-    ),
-    [socket("wrist", [0, 0, 0], [0, 1, 0]), socket("grip", [0, -0.09, 0.02], [0, 0, 1])],
-  ),
+  // Saved projects refer to the left hand by its original id.
+  hand("body.hand", "Mão esquerda", 1),
+  hand("body.hand_right", "Mão direita", -1),
 
   limb(
     "thigh",
@@ -715,9 +882,9 @@ export const bodyBlocks: BlockDef[] = [
       [-0.37, 0.06, 0.064],
       [-0.25, 0.073, 0.08],
       [-0.12, 0.085, 0.092],
-      [-0.03, 0.09, 0.095],
-      [0.03, 0.092, 0.096],
-      [0.06, 0.07, 0.074],
+      [-0.03, 0.097, 0.1],
+      [0.03, 0.098, 0.1],
+      [0.06, 0.075, 0.078],
       [0.074, 0.02, 0.02],
       [0.078, 0.003, 0.003],
     ],
@@ -725,6 +892,8 @@ export const bodyBlocks: BlockDef[] = [
     "knee",
     0.4,
     [{ at: [0, -0.39, 0.06], radius: 0.036, height: 0.008 }],
+    // Where the thigh meets the hips, a coarser ring shows up as a jagged edge.
+    40,
   ),
   limb(
     "calf",
@@ -787,6 +956,28 @@ export const bodyBlocks: BlockDef[] = [
         ),
       ),
       torus(0.044, 0.008, { at: [0, 0.052, -0.022], rot: [90, 0, 0], scale: [1.05, 1.22, 1], shade: 0.75 }),
+    ),
+    [socket("ankle", [0, 0, 0], [0, 1, 0]), socket("sole", [0, -0.07, 0.05], [0, -1, 0])],
+  ),
+  block(
+    "body.shoe_heel",
+    "Salto",
+    "body",
+    "#a0335a",
+    compound(
+      loft(
+        [
+          [-0.082, 0.018, 0.028, 2, 0.012],
+          [-0.07, 0.038, 0.05, 2.3, 0.014],
+          [-0.02, 0.043, 0.05, 2.3, 0.004],
+          [0.05, 0.046, 0.034, 2.3, -0.03],
+          [0.13, 0.043, 0.022, 2.2, -0.052],
+          [0.185, 0.03, 0.012, 2.2, -0.058],
+          [0.192, 0.004, 0.003, 2, -0.058],
+        ],
+        { axis: "z", segments: 32, steps: 5, finish: "gloss" },
+      ),
+      cylinder(0.012, 0.007, 0.075, 12, { at: [0, -0.033, -0.062], finish: "gloss" }),
     ),
     [socket("ankle", [0, 0, 0], [0, 1, 0]), socket("sole", [0, -0.07, 0.05], [0, -1, 0])],
   ),
@@ -927,6 +1118,7 @@ export const bodyBlocks: BlockDef[] = [
   ])),
   eyes("sleepy", "Olhos sonolentos", pair((side) => eyeball(side, { lidDrop: 0.013, iris: 0.013 }))),
   eyes("narrow", "Olhos puxados", pair((side) => eyeball(side, { x: 0.052, squash: 0.62, ball: 0.027, iris: 0.012 }))),
+  eyes("lashes", "Olhos com cílios", pair((side) => eyeball(side, { x: 0.051, ball: 0.028, iris: 0.016, lash: 1.5 }))),
 
   faceBlock("brows_straight", "Sobrancelhas retas", HAIR, pair((side) => brow(side, 0.003, 0, 0.0062))),
   faceBlock("brows_arched", "Sobrancelhas arqueadas", HAIR, pair((side) => brow(side, 0.012, -0.003, 0.0052))),
@@ -971,6 +1163,7 @@ export const bodyBlocks: BlockDef[] = [
 
   faceBlock("mouth_smile", "Sorriso", "#a0524d", lips(0.031, 0.009)),
   faceBlock("mouth_flat", "Boca reta", "#a0524d", lips(0.026, 0)),
+  faceBlock("mouth_full", "Lábios cheios", "#b5484f", lips(0.03, 0.006, 1.35)),
   faceBlock("mouth_open", "Boca aberta", "#a0524d", [
     sphere(0.024, { at: [0, -0.006, -0.008], scale: [1.15, 0.85, 0.4], color: "#2c0f12" }),
     sphere(0.016, { at: [0, 0.006, -0.0005], scale: [1.35, 0.3, 0.3], color: WHITE }),
@@ -1069,32 +1262,8 @@ export const bodyBlocks: BlockDef[] = [
     ),
   ]),
 
-  block(
-    "face.ear",
-    "Orelha",
-    "face",
-    SKIN,
-    compound(
-      loft(
-        [
-          [-0.035, 0.004, 0.006, 2, 0],
-          [-0.03, 0.01, 0.016, 2, 0.002],
-          [-0.01, 0.012, 0.026, 2, -0.002],
-          [0.018, 0.012, 0.03, 2, -0.006],
-          [0.034, 0.01, 0.022, 2, -0.008],
-          [0.04, 0.003, 0.006, 2, -0.008],
-        ],
-        { at: [-0.006, 0, 0], segments: 24, steps: 4 },
-      ),
-      torus(0.019, 0.0035, {
-        at: [-0.014, 0.003, -0.006],
-        rot: [0, 90, 0],
-        arc: Math.PI * 1.25,
-        shade: 0.84,
-      }),
-    ),
-    earSockets,
-  ),
+  ear("face.ear", "Orelha", 1),
+  ear("face.ear_left", "Orelha esquerda", -1),
   block(
     "face.ear_elf",
     "Orelha de elfo",

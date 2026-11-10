@@ -61,7 +61,8 @@ class GeometryCache {
   }
 }
 
-const FINISH_NAMES = ["fosco", "brilhante", "metal", "vidro", "luz"];
+/** Named in the slot order of BLOCK_FINISHES. */
+const FINISH_NAMES = ["fosco", "brilhante", "metal", "vidro", "luz", "pintura", "vidro_fume"];
 
 function slice(geometry: THREE.BufferGeometry, start: number, count: number): THREE.BufferGeometry {
   const result = new THREE.BufferGeometry();
@@ -97,7 +98,7 @@ function mergeParts(parts: Part[], geometries: GeometryCache, root: THREE.Group)
     }
   }
 
-  // Slots are finish * 2, so white tinted materials give the five finishes directly.
+  // Slots are finish * 2, so white tinted materials give every finish directly.
   const materials = createBlockMaterials(0xffffff);
   for (const [finish, pieces] of byFinish) {
     const merged = mergeGeometries(pieces);

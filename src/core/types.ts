@@ -22,6 +22,8 @@ export interface ShapeMaterial {
   color?: string;
   shade?: number;
   finish?: Finish;
+  /** Takes its colors from the shape's `vertexColors`, so they blend across the faces. */
+  painted?: boolean;
 }
 
 export interface ShapeSocket {
@@ -42,7 +44,13 @@ export interface CustomShape {
   smoothAngle: number;
   /** Left empty, the editor derives attachment points from the shape's bounds. */
   sockets: ShapeSocket[];
+  /** One 0xRRGGBB color per vertex, for materials that are painted. */
+  vertexColors?: number[];
+  /** Made by a generator: it goes away together with the model that uses it. */
+  generated?: boolean;
 }
+
+export type GeneratedShape = Omit<CustomShape, "id" | "generated">;
 
 export interface Project {
   name: string;
@@ -106,6 +114,10 @@ export type Command =
       replace: boolean;
       /** Makes the new parts one group, so they move as a single model. */
       group?: boolean;
+      /** Parts that go away in the same undo step. */
+      remove?: PartId[];
+      /** Shapes made for this model. A part uses one through the block id `@index`. */
+      shapes?: GeneratedShape[];
     }
   | { type: "updateParts"; updates: PartUpdate[] }
   | { type: "setGrouped"; ids: PartId[]; grouped: boolean }

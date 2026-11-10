@@ -30,4 +30,14 @@ export class Rng {
   pick<T>(items: readonly T[]): T {
     return items[Math.floor(this.next() * items.length)];
   }
+
+  /**
+   * A separate stream of numbers for one decision. It depends only on the seed and the label,
+   * so changing an option leaves every unrelated choice as it was.
+   */
+  fork(label: string): Rng {
+    let hash = this.state ^ 0x811c9dc5;
+    for (let i = 0; i < label.length; i++) hash = Math.imul(hash ^ label.charCodeAt(i), 16777619);
+    return new Rng(hash >>> 0);
+  }
 }

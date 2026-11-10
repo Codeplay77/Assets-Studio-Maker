@@ -54,8 +54,10 @@ any ready-made part editable too. A shape's id works as a block id everywhere.
 
 You can also assemble from the catalog: find pieces with search_blocks, read their sockets with \
 get_block, then place them with attach_part (snaps to a socket) or add_parts (free position, \
-use onGround to rest on the floor). Use generate for a complete random person, vehicle, \
-building, house, tree, city or track. Prefer whichever gives the best result, and mix them.
+use onGround to rest on the floor). Every model follows one of three art styles (lowpoly, \
+realistic, blocks): keep a whole project in one style and never mix blocks of different styles. \
+Use generate for a complete random person, vehicle, \
+building, house, tree, city or map. Prefer whichever gives the best result, and mix them.
 
 Check your work with capture_view, using several views, before saying it's done. When a model \
 is finished, group_parts makes it move as one, and frame_view shows it to the user.";

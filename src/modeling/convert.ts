@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { getBlock } from "../blocks/catalog";
-import { buildGeometry } from "../blocks/geometry";
+import { BLOCK_FINISHES, buildGeometry } from "../blocks/geometry";
+import type { BlockFinish } from "../blocks/types";
 import type { Finish, Part, ShapeMaterial, Vec3 } from "../core/types";
 import { booleanMeshes, type BooleanMode } from "./boolean";
 import {
@@ -17,7 +18,9 @@ import {
   type PolyMesh,
 } from "./mesh";
 
-const FINISHES: Finish[] = ["matte", "gloss", "metal", "glass", "glow"];
+/** A shape keeps the closest finish a person can pick for it. */
+const EDITABLE: Record<BlockFinish, Finish> = { matte: "matte", gloss: "gloss", metal: "metal", glass: "glass", glow: "glow", paint: "gloss", tint: "glass" };
+const FINISHES: Finish[] = BLOCK_FINISHES.map((finish) => EDITABLE[finish]);
 const WELD_STEP = 1e-4;
 const MAX_MATERIALS = 256;
 const COPLANAR = 0.9999;

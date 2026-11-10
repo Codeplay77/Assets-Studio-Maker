@@ -2,12 +2,12 @@ import * as THREE from "three";
 import { mergeGeometries, toCreasedNormals } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { triangulateFace } from "../modeling/triangulate";
-import { decodeModel } from "./modelPack";
+import { decodeBaked, decodeModel } from "./modelPack";
 import type {
+  BlockFinish,
   BlockShape,
   BodyDeform,
   Bump,
-  Finish,
   LoftRing,
   Point,
   Primitive,
@@ -17,8 +17,12 @@ import type {
 
 /** Edges sharper than this stay hard, so round parts look smooth and boxes stay crisp. */
 const CREASE_ANGLE = THREE.MathUtils.degToRad(35);
+/** Small enough to show every polygon, and enough to hide the diagonal inside a nearly flat quad. */
+const FACETED_ANGLE = THREE.MathUtils.degToRad(8);
 
-const FINISHES: Finish[] = ["matte", "gloss", "metal", "glass", "glow"];
+/** In slot order. New finishes go at the end, so the slots of the older ones never move. */
+export const BLOCK_FINISHES: BlockFinish[] = ["matte", "gloss", "metal", "glass", "glow", "paint", "tint"];
+const FINISHES = BLOCK_FINISHES;
 
 /** Each finish has two material slots: one follows the part's color, one keeps its own. */
 const slotOf = (piece: ShapePiece) =>
@@ -294,15 +298,24 @@ function lumpy(
   return geometry;
 }
 
-function polygons(vertices: Vec3[], faces: number[][]): THREE.BufferGeometry {
+function polygons(vertices: Vec3[], faces: number[][], paint?: number[]): THREE.BufferGeometry {
   const positions: number[] = [];
+  const colors: number[] = [];
+  const color = new THREE.Color();
   for (const face of faces) {
     for (const triangle of triangulateFace(vertices, face)) {
-      for (const vertex of triangle) positions.push(...vertices[vertex]);
+      for (const vertex of triangle) {
+        positions.push(...vertices[vertex]);
+        if (paint) {
+          color.setHex(paint[vertex], THREE.SRGBColorSpace);
+          colors.push(color.r, color.g, color.b);
+        }
+      }
     }
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  if (paint) geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   return geometry;
 }
 
@@ -358,7 +371,8 @@ export function buildPrimitive(shape: Primitive): THREE.BufferGeometry {
     case "box":
       return new THREE.BoxGeometry(...shape.size);
     case "roundedBox":
-      return new RoundedBoxGeometry(...shape.size, shape.radius < 0.02 ? 2 : 3, shape.radius);
+      // Segments multiply quickly here: two already make 300 triangles for one box.
+      return new RoundedBoxGeometry(...shape.size, shape.radius < 0.03 ? 1 : 2, shape.radius);
     case "wedge":
       return wedge(shape.size);
     case "frustum":
@@ -383,6 +397,8 @@ export function buildPrimitive(shape: Primitive): THREE.BufferGeometry {
         : new THREE.CapsuleGeometry(shape.radius, shape.length, 6, 20);
     case "model":
       return decodeModel(shape);
+    case "baked":
+      return decodeBaked(shape);
     case "icosahedron":
       return new THREE.IcosahedronGeometry(shape.radius, shape.detail ?? 0);
     case "dodecahedron":
@@ -411,7 +427,7 @@ export function buildPrimitive(shape: Primitive): THREE.BufferGeometry {
     case "slab":
       return slab(shape.points, shape.height);
     case "polygons":
-      return polygons(shape.vertices, shape.faces);
+      return polygons(shape.vertices, shape.faces, shape.colors);
   }
 }
 
@@ -440,15 +456,22 @@ function buildPiece(piece: ShapePiece): THREE.BufferGeometry {
   // Imported models already carry their own normals and colors.
   if (piece.shape.kind === "model") return decodeModel(piece.shape);
 
+  // Baked zones come with the normals Blender computed: creasing them again would undo its work.
   const raw = buildPrimitive(piece.shape);
-  const crease = piece.shape.kind === "polygons" ? THREE.MathUtils.degToRad(piece.shape.crease) : CREASE_ANGLE;
-  const geometry = toCreasedNormals(raw, crease);
+  const crease = piece.faceted
+    ? FACETED_ANGLE
+    : piece.shape.kind === "polygons"
+      ? THREE.MathUtils.degToRad(piece.shape.crease)
+      : CREASE_ANGLE;
+  const geometry = piece.shape.kind === "baked" ? raw : toCreasedNormals(raw, crease);
   if (geometry !== raw) raw.dispose();
   geometry.applyMatrix4(pieceMatrix(piece));
   repairNormals(geometry);
+  const painted = piece.shape.kind === "polygons" && piece.shape.colors !== undefined;
   for (const name of Object.keys(geometry.attributes)) {
-    if (name !== "position" && name !== "normal") geometry.deleteAttribute(name);
+    if (name !== "position" && name !== "normal" && !(painted && name === "color")) geometry.deleteAttribute(name);
   }
+  if (painted) return geometry;
 
   const color = piece.color
     ? new THREE.Color(piece.color)
@@ -490,20 +513,32 @@ export function buildGeometry(shape: BlockShape): THREE.BufferGeometry {
   return merged;
 }
 
-const SURFACES: Record<Finish, THREE.MeshStandardMaterialParameters> = {
+const SURFACES: Record<BlockFinish, THREE.MeshPhysicalMaterialParameters> = {
   matte: { roughness: 0.72, metalness: 0 },
   gloss: { roughness: 0.24, metalness: 0.08 },
   metal: { roughness: 0.34, metalness: 0.78 },
   glass: { roughness: 0.06, metalness: 0.75 },
   glow: { roughness: 0.3, metalness: 0 },
+  // Car paint: a soft base under a clear coat that keeps a sharp reflection.
+  paint: { roughness: 0.4, metalness: 0.18, clearcoat: 1, clearcoatRoughness: 0.04 },
+  // Tinted glass: the cabin shows through, darkened, and the glass still reflects.
+  tint: { roughness: 0.02, metalness: 0.1, transparent: true, opacity: 0.62, depthWrite: false, envMapIntensity: 2.2 },
 };
+
+/** Finishes that need the physical material, which costs more to draw. */
+const PHYSICAL = new Set<BlockFinish>(["paint", "tint"]);
+
+function surfaceMaterial(finish: BlockFinish, color?: string | number): THREE.MeshStandardMaterial {
+  const parameters = { vertexColors: true, ...(color === undefined ? {} : { color }), ...SURFACES[finish] };
+  return PHYSICAL.has(finish) ? new THREE.MeshPhysicalMaterial(parameters) : new THREE.MeshStandardMaterial(parameters);
+}
 
 let sharedFixed: THREE.Material[] | null = null;
 
 function createFixedMaterials(): THREE.Material[] {
   return FINISHES.map((finish) => {
     if (finish === "glow") return new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
-    return new THREE.MeshStandardMaterial({ vertexColors: true, ...SURFACES[finish] });
+    return surfaceMaterial(finish);
   });
 }
 
@@ -524,10 +559,7 @@ export function createBlockMaterials(
   options: { ownFixed?: boolean } = {},
 ): THREE.MeshStandardMaterial[] {
   const fixed = options.ownFixed ? createFixedMaterials() : fixedMaterials();
-  return FINISHES.flatMap((finish, index) => [
-    new THREE.MeshStandardMaterial({ color, vertexColors: true, ...SURFACES[finish] }),
-    fixed[index],
-  ]) as THREE.MeshStandardMaterial[];
+  return FINISHES.flatMap((finish, index) => [surfaceMaterial(finish, color), fixed[index]]) as THREE.MeshStandardMaterial[];
 }
 
 export function disposeBlockMaterials(materials: THREE.Material[]): void {

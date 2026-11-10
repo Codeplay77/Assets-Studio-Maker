@@ -6,6 +6,7 @@ import { useEditor } from "../core/store";
 import { AgentDialog } from "./AgentDialog";
 import { Dock } from "./Dock";
 import { EmptyState } from "./EmptyState";
+import { GeneratorOptions } from "./GeneratorOptions";
 import { ExportDialog } from "./ExportDialog";
 import { Inspector } from "./Inspector";
 import { StatusBar } from "./StatusBar";
@@ -135,7 +136,8 @@ function handleShortcut(event: KeyboardEvent): void {
   switch (key) {
     case "escape":
       if (editor.placingBlock) editor.stopPlacing();
-      else editor.select([]);
+      else if (editor.selection.length > 0) editor.select([]);
+      else editor.closeGenerator();
       break;
     case "delete":
     case "backspace":
@@ -223,6 +225,7 @@ export function App() {
       <TitleBar />
       <Dock />
       <Inspector />
+      <GeneratorOptions />
       <EmptyState />
       <StatusBar />
       {exportOpen && <ExportDialog />}

@@ -1,3 +1,4 @@
+import { layersOf } from "../blocks/catalog";
 import { useEffect, useRef } from "react";
 import { useEditor } from "../core/store";
 import type { Quat } from "../core/types";
@@ -31,13 +32,18 @@ export function ViewportHost() {
     const viewport = new EditorViewport(containerRef.current!, {
       onPlace(block, { position, quaternion }) {
         const { dispatch, placementColor: color } = useEditor.getState();
-        void dispatch({
-          type: "addPart",
-          block,
-          position: position.toArray(),
-          rotation: quaternion.toArray() as Quat,
-          ...(color ? { color } : {}),
-        });
+        const where = { position: position.toArray(), rotation: quaternion.toArray() as Quat };
+        const layers = layersOf(block);
+        if (layers.length > 0) {
+          void dispatch({
+            type: "addParts",
+            parts: [{ block, ...where, ...(color ? { color } : {}) }, ...layers.map((layer) => ({ block: layer, ...where }))],
+            replace: false,
+            group: true,
+          });
+          return;
+        }
+        void dispatch({ type: "addPart", block, ...where, ...(color ? { color } : {}) });
       },
       onPick: (id, mode) => useEditor.getState().pick(id, mode),
       onMeshPick: (hit, additive) => useEditor.getState().pickMesh(hit, additive),

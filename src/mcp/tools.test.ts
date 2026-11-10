@@ -106,10 +106,67 @@ describe("failures", () => {
     ["update_parts", { updates: [{ position: [0, 0, 0] }] }],
     ["capture_view", { views: ["debaixo"] }],
     ["generate", { generator: "nada" }],
+    ["generate", { generator: "person", style: "desenho" }],
+    ["generate", { generator: "person", options: { asas: "sim" } }],
+    ["generate", { generator: "person", options: { sex: "robo" } }],
+    ["generate", { generator: "car", style: "arcade", options: { kind: "tractor" } }],
   ])("rejects bad arguments to %s", async (name, args) => {
     const { deps, applied } = fake();
     errorOf(await callTool(name, args, deps));
     expect(applied).toHaveLength(0);
+  });
+});
+
+describe("generating", () => {
+  const withGenerate = (parts: Part[] = []) => {
+    const made = fake(parts);
+    const calls: unknown[][] = [];
+    made.deps.generate = (...args) => {
+      calls.push(args);
+      return Promise.resolve([1]);
+    };
+    return { ...made, calls };
+  };
+
+  it("passes the style and options on", async () => {
+    const { deps, calls } = withGenerate();
+    const result = json(await callTool("generate", { generator: "person", style: "blocks", options: { sex: "female", age: "child" }, seed: 5 }, deps));
+    expect(result.style).toBe("blocks");
+    expect(calls[0]).toEqual(["person", 5, true, { style: "blocks", options: { sex: "female", age: "child" } }]);
+  });
+
+  it("starts in low poly and then follows the scene", async () => {
+    const empty = withGenerate();
+    expect(json(await callTool("generate", { generator: "tree" }, empty.deps)).style).toBe("lowpoly");
+    const scene = withGenerate([part(1, { block: "vx.oak" })]);
+    expect(json(await callTool("generate", { generator: "tree" }, scene.deps)).style).toBe("blocks");
+  });
+
+  it("refuses to mix styles, and explains how to proceed", async () => {
+    const { deps, calls } = withGenerate([part(1, { block: "vx.oak" })]);
+    expect(errorOf(await callTool("generate", { generator: "tree", style: "realistic" }, deps))).toMatch(/keep false/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("allows another style when it replaces the scene", async () => {
+    const { deps } = withGenerate([part(1, { block: "vx.oak" })]);
+    expect(json(await callTool("generate", { generator: "tree", style: "realistic", keep: false }, deps)).style).toBe("realistic");
+  });
+
+  it("does not count plain shapes as a style", async () => {
+    const { deps } = withGenerate([part(1, { block: "basic.cube" })]);
+    expect(json(await callTool("generate", { generator: "tree", style: "realistic" }, deps)).style).toBe("realistic");
+  });
+
+  it("tells which models each kind of vehicle has", () => {
+    const tool = listTools().tools.find(({ name }) => name === "generate")!;
+    expect(tool.description).toMatch(/moto=moto_/);
+  });
+
+  it("filters the catalog by style", async () => {
+    const found = json(await callTool("search_blocks", { query: "mao", style: "blocks" }, fake().deps));
+    expect(found.total).toBeGreaterThan(0);
+    for (const block of found.blocks) expect(block.style).toBe("blocks");
   });
 });
 

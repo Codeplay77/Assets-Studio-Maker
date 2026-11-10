@@ -2,9 +2,8 @@ import { getBlock, type BlockDef } from "../blocks/catalog";
 import { buildGeometry } from "../blocks/geometry";
 import * as api from "../core/api";
 import { useEditor } from "../core/store";
-import type { Part, PartId, Vec3 } from "../core/types";
+import type { Part, Vec3 } from "../core/types";
 import { exportGlb, type ExportOptions } from "../export/glb";
-import { runGenerator } from "../generators";
 
 const DUPLICATE_OFFSET: Vec3 = [0.25, 0, 0.25];
 const KEEP_MARGIN = 1;
@@ -12,7 +11,7 @@ const KEEP_MARGIN = 1;
 const blockRadii = new WeakMap<BlockDef, number>();
 
 /** How far a part reaches from its origin, to place new models without overlapping. */
-function partReach(block: string, scale: Vec3): number {
+export function partReach(block: string, scale: Vec3): number {
   const def = getBlock(block);
   let radius = blockRadii.get(def);
   if (radius === undefined) {
@@ -74,33 +73,6 @@ export function freeSpotBeside(): number {
   const parts = useEditor.getState().snapshot?.project.parts ?? [];
   if (parts.length === 0) return 0;
   return Math.max(...parts.map((part) => part.position[0] + partReach(part.block, part.scale))) + KEEP_MARGIN;
-}
-
-/**
- * Builds a random model. Unless `keep` is set, it replaces the scene (Ctrl+Z brings it back).
- * Resolves to the new parts, or null if it failed.
- */
-export async function generate(id: string, seed: number, keep: boolean): Promise<PartId[] | null> {
-  const editor = useEditor.getState();
-  const parts = runGenerator(id, seed);
-
-  const existing = editor.snapshot?.project.parts ?? [];
-  if (keep && existing.length > 0) {
-    const edge = Math.max(
-      ...existing.map((part) => part.position[0] + partReach(part.block, part.scale)),
-    );
-    const start = Math.min(
-      ...parts.map((part) => part.position[0] - partReach(part.block, part.scale)),
-    );
-    for (const part of parts) part.position[0] += edge - start + KEEP_MARGIN;
-  }
-
-  editor.select([]);
-  editor.stopPlacing();
-  editor.setFocusOnNextSnapshot(true);
-  const created = await editor.dispatch({ type: "addParts", parts, replace: !keep, group: true });
-  if (!created) editor.setFocusOnNextSnapshot(false);
-  return created;
 }
 
 /** Runs `next` right away, or asks first if it would lose unsaved work. */

@@ -2,7 +2,7 @@ import * as api from "../core/api";
 import { useEditor } from "../core/store";
 import type { PartId } from "../core/types";
 import { exportGlb } from "../export/glb";
-import { generate } from "../ui/actions";
+import { generate } from "../ui/generate";
 import { activeViewport } from "../viewport/active";
 import type { CaptureView } from "../viewport/EditorViewport";
 import { callTool, listTools, toolActivity, type ToolDeps } from "./tools";
@@ -29,8 +29,8 @@ const deps: ToolDeps = {
   apply: api.applyCommand,
   undo: api.undo,
   redo: api.redo,
-  async generate(generator, seed, keep) {
-    const created = await generate(generator, seed, keep);
+  async generate(generator, seed, keep, settings) {
+    const created = await generate(generator, seed, keep, settings);
     if (!created) throw new Error("não foi possível gerar o modelo");
     return created;
   },

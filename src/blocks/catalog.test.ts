@@ -1,15 +1,17 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import * as THREE from "three";
-import { blocks, categories } from "./catalog";
+import { blocks, categories, isColorLayer, layersOf } from "./catalog";
 import * as definitions from "./definitions/index.ts";
 import { buildGeometry, FIXED_GROUP, TINTED_GROUP } from "./geometry";
-import { setModelPack } from "./modelPack";
+import { setModelPack, setVehiclePack } from "./modelPack";
 import type { BlockShape } from "./types";
 
 beforeAll(() => {
   const file = readFileSync(new URL("../../public/models/pack.bin", import.meta.url));
   setModelPack(file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer);
+  const vehicles = readFileSync(new URL("../../public/models/vehicles.bin", import.meta.url));
+  setVehiclePack(vehicles.buffer.slice(vehicles.byteOffset, vehicles.byteOffset + vehicles.byteLength) as ArrayBuffer);
 });
 
 function signedVolume(geometry: THREE.BufferGeometry): number {
@@ -33,6 +35,15 @@ describe("block catalog", () => {
   it("matches the definitions (run `pnpm catalog` after editing them)", () => {
     expect(blocks).toEqual(JSON.parse(JSON.stringify(definitions.blocks)));
     expect(categories).toEqual(definitions.categories);
+  });
+
+  it("places a model with all its color layers and hides them from the lists", () => {
+    expect(layersOf("ar.veh_sedan_base")).toEqual(["ar.veh_sedan_paint", "ar.veh_sedan_trim", "ar.veh_sedan_accent"].filter((id) => blocks.some((block) => block.id === id)));
+    expect(layersOf("ar.veh_moto_naked_base")).toContain("ar.veh_moto_naked_rim");
+    expect(layersOf("ar.wheel_liga_rim")).toEqual(["ar.wheel_liga_band"]);
+    expect(layersOf("basic.cube")).toEqual([]);
+    for (const id of ["ar.veh_sedan_paint", "ar.wheel_liga_band", "ar.veh_moto_naked_rim"]) expect(isColorLayer(id), id).toBe(true);
+    for (const id of ["ar.veh_sedan_base", "ar.wheel_liga_rim", "basic.cube"]) expect(isColorLayer(id), id).toBe(false);
   });
 
   it("has unique ids and valid categories", () => {
@@ -70,7 +81,7 @@ describe("block catalog", () => {
     (_id, block) => {
       for (const piece of piecesOf(block.shape)) {
         // Imported models may be open surfaces, like a flat road tile.
-        if (piece.shape.kind === "model") continue;
+        if (piece.shape.kind === "model" || piece.shape.kind === "baked") continue;
         const geometry = buildGeometry({ kind: "compound", pieces: [piece] });
         expect(signedVolume(geometry), `${block.id} ${piece.shape.kind}`).toBeGreaterThan(0);
         geometry.dispose();

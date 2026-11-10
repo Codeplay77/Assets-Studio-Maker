@@ -12,10 +12,12 @@ para Windows.
 
 - Biblioteca com 606 modelos prontos em CC0: veículos, construções, ruas, autódromo, natureza e
   personagens
-- 171 peças próprias para montar: corpo, rosto, cabelo e chapéus, veículos, rodas, ruas, pistas,
-  prédios, mobiliário urbano e natureza
+- Mais de 1.300 peças próprias para montar, nos estilos Low poly, Realista, Blocos e Arcade: karts,
+  carros, caminhões, ônibus, carretas, motos, casas, prédios, corpo, rosto, cabelo e chapéus, rodas,
+  ruas, mobiliário urbano e natureza
 - Materiais por peça: fosco, pintura brilhante, metal, vidro e luzes acesas
-- Geradores aleatórios de pessoa, boneco, veículo, prédio, casa, árvore, cidade e pista
+- Geradores com opções e estilo único: pessoa (homem, mulher, adulto, criança e mais), veículo
+  (carros, karts, motos, caminhões, ônibus e carretas), prédio, casa, árvore, cidade (com ruas irregulares, orgânicas ou em grade) e mapa
 - Modelagem livre: comece de uma forma básica ou de qualquer peça pronta e edite faces, arestas e
   pontos
 - Encaixe por pontos verdes: passe o mouse sobre um bloco e clique em um ponto
@@ -97,13 +99,13 @@ substituem um arquivo.
 | `search_blocks`, `get_block` | Procura blocos e mostra tamanho e encaixes |
 | `create_shape` | Cria uma forma nova, com geometria livre |
 | `edit_shape` | Puxa faces, fura, chanfra, combina formas, esculpe, arredonda, espelha e pinta |
+| `generate` | Gera pessoas, veículos, prédios, casas, árvores, cidades e mapas, com estilo e opções |
 | `get_shape`, `list_shapes` | Lê as formas do projeto, inclusive pontos e faces |
 | `update_shape`, `duplicate_shape`, `delete_shape` | Altera, copia e apaga formas |
 | `convert_to_shape` | Transforma peças prontas em uma forma editável |
 | `add_parts`, `attach_part` | Coloca blocos livres ou encaixados em outra peça |
 | `update_parts`, `move_parts`, `duplicate_parts`, `remove_parts` | Altera as peças |
 | `group_parts`, `clear_scene` | Agrupa as peças e limpa a cena |
-| `generate` | Usa os geradores aleatórios |
 | `capture_view` | Devolve imagens do modelo, de vários ângulos |
 | `frame_view` | Enquadra o modelo na sua tela |
 | `undo`, `redo` | Desfaz e refaz |
@@ -111,12 +113,33 @@ substituem um arquivo.
 
 ## Geradores
 
-Na aba **Criar**, cada clique sorteia um modelo novo e enquadra a câmera nele. O modelo
-substitui o que está na cena, e Ctrl+Z traz tudo de volta. Para ir somando modelos lado a lado,
-marque **Manter o que já está na cena**.
+Na aba **Criar**, escolha primeiro o **estilo**: tudo o que você gerar segue esse padrão, então
+um boneco de blocos nunca aparece ao lado de um carro realista.
 
-Cada modelo sai de um número, a **semente**. Digite a semente e clique em **Repetir** para obter
-exatamente o mesmo resultado.
+| Estilo | Como é |
+| --- | --- |
+| **Low poly** | Polígonos à vista, leve e colorido. Usa os modelos CC0 e o personagem low poly |
+| **Realista** | Formas suaves e mais detalhe. Usa as peças próprias do editor |
+| **Blocos** | Tudo feito de cubos, inclusive pessoas, carros, cidades e mapas |
+| **Arcade** | Pintura brilhante, cromados e rodas grandes, no visual do jogo Codeplay in Kart |
+
+Os karts, carros, caminhões, ônibus, carretas, motos, casas e prédios do Arcade têm pintura em
+três áreas (principal, secundária e detalhes), além da cor dos aros. Em **Veículo**, o tipo **Kart**
+ainda deixa trocar carroceria, rodas, aerofólio, capacete, piloto e macacão. Cada área é uma peça separada, então
+também dá para mudar a cor depois, no painel da direita.
+
+Depois clique em um tipo de modelo. As opções abrem no painel da direita: na **Pessoa**, sexo,
+idade, porte, altura, pele, cabelo, roupa, barba, óculos, chapéu e mochila. O que ficar em
+**Sortear** é decidido pela semente. Clique em **Gerar** e, a partir daí, cada opção alterada
+atualiza o mesmo modelo sem mudar o resto. Cada mudança é um Ctrl+Z.
+
+O modelo substitui o que está na cena. Com **Manter o que já está na cena** ligado, ele vai para o
+lado do que já existe e o estilo fica preso ao da cena, para não misturar. **Mais um ao lado** soma
+outro modelo do mesmo tipo.
+
+Cada modelo sai de um número, a **semente**. A mesma semente com as mesmas opções dá sempre o mesmo
+resultado. Nas abas **Peças** e **Biblioteca**, a lista mostra o estilo escolhido; use **Todos** para
+ver tudo.
 
 ## Atalhos
 
@@ -174,6 +197,9 @@ projeto e aplica todas as alterações.
 | `src/blocks/definitions/` | Onde cada bloco é definido |
 | `src/blocks/blocks.json` | Catálogo gerado, lido pela interface e pelo Rust |
 | `src/generators/` | Geradores aleatórios |
+| `src/blocks/definitions/family/` | Família Arcade: karts, veículos, casas e prédios, com pintura em camadas |
+| `tools/blender/` | Scripts do Blender que modelam os veículos de todos os estilos e geram `public/models/vehicles.bin` |
+| `src/blocks/definitions/styleize.ts` | Converte um modelo de um estilo para os outros |
 | `src/modeling/` | Malha editável, formas básicas e operações de modelagem |
 | `src/viewport/` | Cena 3D e cálculo de encaixe |
 | `src/ui/` | Painéis e atalhos |
@@ -217,6 +243,17 @@ pnpm catalog
 
 Só adicione modelos CC0. A lista de pacotes, a escala e a categoria ficam no início de
 `scripts/import-models.ts`. Registre todo pacote novo em [CREDITS.md](CREDITS.md).
+
+## Veículos feitos no Blender
+
+Todos os veículos do editor (carros, SUVs, picapes, vans, caminhões, ônibus, carretas, motos e karts, com rodas, piloto, capacetes e aerofólios) são modelados por script no Blender 5.1. O mesmo desenho gera os quatro estilos: Arcade e Realista usam o modelo completo, Low poly usa uma versão com poucas faces planas e Blocos usa essa versão convertida em voxels. Seis karts, o piloto e cinco aerofólios vêm do jogo Codeplay in Kart. Para gerar tudo de novo:
+
+```bash
+blender -b --factory-startup --python tools/blender/build_vehicles.py -- --export
+pnpm catalog
+```
+
+O primeiro comando grava `public/models/vehicles.bin` e `src/blocks/definitions/family/baked.generated.ts`. Para ver um modelo sem exportar, use `-- sedan --preview saida.png` no lugar de `-- --export`; acrescente `--lod lp` ou `--lod vx` para ver as versões Low poly e Blocos. Depois de `pnpm catalog`, reinicie o `tauri dev`, porque o núcleo em Rust embute o catálogo.
 
 ## Licenças
 
