@@ -36,8 +36,8 @@ ZONES = {
     "rubber": ("#1b1c1f", None),
     "plastic": ("#25272c", None),
     "seat": ("#23252b", None),
-    "cabin": ("#55585f", None),
-    "upholstery": ("#45484f", None),
+    "cabin": ("#4b4e55", None),
+    "upholstery": ("#3b3d43", None),
     "glass": ("#10202c", "gloss"),
     "visor": ("#0b0f16", "glass"),
     "glove": ("#23252b", None),
@@ -575,7 +575,7 @@ def carve_box(size, location, regions, region="CARVE", rotation=(0, 0, 0), bevel
     return _carve_object(bm, regions, region)
 
 
-def finish_surface(obj, regions, pairs, insets=(("GLASS", 0.016, 0.012),), frame="FRAME", gap=0.0042, depth=0.008):
+def finish_surface(obj, regions, pairs, insets=(("GLASS", 0.016, 0.012),), frame="FRAME", gap=0.0032, depth=0.007):
     """Opens the panel gaps and sinks the glass into the body."""
     names = list(regions)
     pairs = {frozenset(pair) for pair in pairs} if LOD == "hi" else set()

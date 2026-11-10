@@ -4,7 +4,7 @@
 //! shows up live and can be undone like a user action. Error messages are in Portuguese
 //! because they reach the person using the editor.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -32,6 +32,8 @@ const MAX_NAME_CHARS: usize = 80;
 const MAX_COORDINATE: f64 = 100_000.0;
 const MAX_SMOOTH_ANGLE: f64 = 180.0;
 const DEFAULT_SMOOTH_ANGLE: f64 = 35.0;
+const MAX_ANIMATIONS: usize = 256;
+const MAX_CLIP_CHARS: usize = 80;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,6 +62,10 @@ pub struct Project {
     pub shapes: Vec<Arc<CustomShape>>,
     #[serde(default = "first_group")]
     pub next_shape: u64,
+    /// The animations each character carries into an export, as clip ids, under the id of the
+    /// character's hips part.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub animations: BTreeMap<PartId, Vec<String>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,6 +147,7 @@ impl Default for Project {
             next_group: first_group(),
             shapes: Vec::new(),
             next_shape: first_group(),
+            animations: BTreeMap::new(),
         }
     }
 }
@@ -243,6 +250,12 @@ pub enum Command {
     /// Deletes a shape and the parts using it, and returns the ids of those parts.
     RemoveShape {
         id: String,
+    },
+    /// Chooses the animations a character carries into an export. `part` is its hips; an empty
+    /// list takes them all away.
+    SetAnimations {
+        part: PartId,
+        clips: Vec<String>,
     },
 }
 
@@ -724,7 +737,47 @@ fn execute(
             project.parts.retain(|part| part.block != id);
             Ok(removed)
         }
+        Command::SetAnimations { part, clips } => {
+            if !project.parts.iter().any(|existing| existing.id == part) {
+                return Err(format!("peça não encontrada: {part}"));
+            }
+            let clips = check_clips(clips)?;
+            if clips.is_empty() {
+                project.animations.remove(&part);
+            } else {
+                project.animations.insert(part, clips);
+            }
+            Ok(vec![part])
+        }
     }
+}
+
+/// Clip ids come from the editor's library, which the core does not know; it only keeps them sane.
+fn check_clips(clips: Vec<String>) -> Result<Vec<String>, String> {
+    if clips.len() > MAX_ANIMATIONS {
+        return Err(format!("um personagem pode levar no máximo {MAX_ANIMATIONS} animações"));
+    }
+    let mut seen = HashSet::new();
+    let mut kept = Vec::with_capacity(clips.len());
+    for clip in clips {
+        let clip = clip.trim().to_string();
+        if clip.is_empty() || clip.chars().count() > MAX_CLIP_CHARS {
+            return Err("nome de animação inválido".to_string());
+        }
+        if seen.insert(clip.clone()) {
+            kept.push(clip);
+        }
+    }
+    Ok(kept)
+}
+
+/// A character that is gone takes its animations with it.
+fn drop_orphan_animations(project: &mut Project) {
+    if project.animations.is_empty() {
+        return;
+    }
+    let ids: HashSet<PartId> = project.parts.iter().map(|part| part.id).collect();
+    project.animations.retain(|part, _| ids.contains(part));
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -805,6 +858,11 @@ pub fn project_from_json(json: &str, catalog: &Catalog) -> Result<Project, Strin
     project.next_id = project.next_id.max(highest + 1);
     let highest_group = project.parts.iter().filter_map(|part| part.group).max().unwrap_or(0);
     project.next_group = project.next_group.max(highest_group + 1);
+    for clips in project.animations.values_mut() {
+        *clips = check_clips(std::mem::take(clips))?;
+    }
+    project.animations.retain(|_, clips| !clips.is_empty());
+    drop_orphan_animations(&mut project);
     Ok(project)
 }
 
@@ -863,6 +921,7 @@ impl Editor {
     pub fn apply(&mut self, command: Command, catalog: &Catalog) -> Result<Vec<PartId>, String> {
         let mut next = self.project.clone();
         let affected = execute(&mut next, command, catalog)?;
+        drop_orphan_animations(&mut next);
         if next != self.project {
             self.undo_stack
                 .push(std::mem::replace(&mut self.project, next));
@@ -1069,6 +1128,45 @@ mod tests {
             .unwrap();
         assert_eq!(created, vec![2]);
         assert_eq!(editor.snapshot().project.parts[1].position, [1.0, 0.25, 0.0]);
+    }
+
+    #[test]
+    fn animations_follow_their_character() {
+        let catalog = catalog();
+        let mut editor = Editor::default();
+        editor.apply(add("basic.cube"), &catalog).unwrap();
+        let set = |clips: &[&str]| Command::SetAnimations {
+            part: 1,
+            clips: clips.iter().map(|clip| clip.to_string()).collect(),
+        };
+        editor.apply(set(&["Walk", " Walk ", "Idle_A"]), &catalog).unwrap();
+        assert_eq!(editor.snapshot().project.animations[&1], vec!["Walk", "Idle_A"]);
+
+        // Saved and read back with the project.
+        let json = project_to_json(editor.project()).unwrap();
+        let read = project_from_json(&json, &catalog).unwrap();
+        assert_eq!(read.animations[&1], vec!["Walk", "Idle_A"]);
+
+        assert!(editor.apply(Command::SetAnimations { part: 9, clips: vec![] }, &catalog).is_err());
+        assert!(editor.apply(set(&[""]), &catalog).is_err());
+
+        // Undo brings them back with the part.
+        editor.apply(Command::RemoveParts { ids: vec![1] }, &catalog).unwrap();
+        assert!(editor.snapshot().project.animations.is_empty());
+        editor.undo();
+        assert_eq!(editor.snapshot().project.animations[&1].len(), 2);
+
+        editor.apply(set(&[]), &catalog).unwrap();
+        assert!(editor.snapshot().project.animations.is_empty());
+    }
+
+    #[test]
+    fn a_file_cannot_keep_animations_of_missing_parts() {
+        let catalog = catalog();
+        let mut project = Project::default();
+        project.animations.insert(5, vec!["Walk".to_string()]);
+        let json = project_to_json(&project).unwrap();
+        assert!(project_from_json(&json, &catalog).unwrap().animations.is_empty());
     }
 
     #[test]

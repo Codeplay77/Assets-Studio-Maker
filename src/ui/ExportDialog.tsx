@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Download, LoaderCircle, X } from "lucide-react";
 import { useEditor, useSelectedParts } from "../core/store";
 import { countTriangles } from "../export/glb";
+import { countVehicles } from "../export/vehicles";
 import { exportParts } from "./actions";
 
 function formatCount(value: number): string {
@@ -41,17 +42,36 @@ export function ExportDialog() {
   const [onlySelection, setOnlySelection] = useState(selected.length > 0);
   const [merge, setMerge] = useState(false);
   const [center, setCenter] = useState(true);
+  const [vehicles, setVehicles] = useState(true);
+  const [animate, setAnimate] = useState(true);
+  const [godot, setGodot] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const parts = onlySelection && selected.length > 0 ? selected : (project?.parts ?? []);
   const triangles = useMemo(() => countTriangles(parts), [parts]);
+  const vehicleCount = useMemo(() => countVehicles(parts), [parts]);
+  // Characters are kept under the id of their hips, so a character counts when its hips go along.
+  const animated = useMemo(() => {
+    const ids = new Set(parts.map((part) => part.id));
+    const entries = Object.entries(project?.animations ?? {}).filter(([id, clips]) => ids.has(Number(id)) && clips.length > 0);
+    return { characters: entries.length, clips: entries.reduce((total, [, clips]) => total + clips.length, 0) };
+  }, [parts, project?.animations]);
+  const withVehicles = vehicles && vehicleCount > 0;
+  const withAnimations = animate && animated.characters > 0;
   const close = () => setExportOpen(false);
 
   const run = async () => {
     setBusy(true);
     // Gives the button a frame to show progress before the export takes over.
     await new Promise((resolve) => requestAnimationFrame(resolve));
-    const done = await exportParts(parts, { merge, center, name: project?.name ?? "Modelo" });
+    const done = await exportParts(parts, {
+      merge,
+      center,
+      name: project?.name ?? "Modelo",
+      vehicles: withVehicles,
+      godot: (withVehicles || withAnimations) && godot,
+      animations: withAnimations ? project?.animations : undefined,
+    });
     setBusy(false);
     if (done) close();
   };
@@ -98,8 +118,36 @@ export function ExportDialog() {
           checked={center}
           onChange={setCenter}
           title="Centralizar na origem"
-          hint="Coloca a base do modelo no ponto zero"
+          hint="Coloca a base do modelo no ponto zero. Um veículo ou personagem sozinho fica de frente para +Z"
         />
+        {vehicleCount > 0 && (
+          <Toggle
+            checked={vehicles}
+            onChange={setVehicles}
+            title="Veículos prontos para jogo"
+            hint={`${vehicleCount === 1 ? "1 veículo" : `${formatCount(vehicleCount)} veículos`}: cada roda vira um nó no centro do eixo, para girar e esterçar no jogo`}
+          />
+        )}
+        {animated.characters > 0 && (
+          <Toggle
+            checked={animate}
+            onChange={setAnimate}
+            title="Levar as animações"
+            hint={`${formatCount(animated.clips)} ${animated.clips === 1 ? "animação" : "animações"} em ${animated.characters === 1 ? "1 personagem" : `${animated.characters} personagens`}: cada um vira uma malha com esqueleto`}
+          />
+        )}
+        {(withVehicles || withAnimations) && (
+          <Toggle
+            checked={godot}
+            onChange={setGodot}
+            title="Pronto para o Godot"
+            hint={
+              withVehicles
+                ? "O Godot 4 monta o VehicleBody3D, as rodas VehicleWheel3D e a caixa de colisão, e repete as animações em ciclo"
+                : "O Godot 4 repete sozinho as animações em ciclo, como andar e correr"
+            }
+          />
+        )}
 
         <div className="actions">
           <button className="button" onClick={close}>

@@ -21,6 +21,17 @@ merecido. Os arquivos em `public/models/pack.bin` foram convertidos pelo
 
 Cada pacote traz um `License.txt` com "License: (Creative Commons Zero, CC0)".
 
+## Animações (CC0 1.0)
+
+As 162 animações humanas vêm do [Mesh2Motion](https://github.com/Mesh2Motion/mesh2motion-app), cujo
+README declara que "the art assets (3d models, rigs, animations) are all licensed under CC0". O
+`scripts/import-animations.ts` converteu `human-base-animations.glb` e
+`human-addon-animations.glb` para `public/animations/human.bin`: cada clipe foi amostrado a 30
+quadros por segundo e guarda só as rotações dos ossos usados pelos personagens do editor.
+
+Os clipes de terceiros que o Mesh2Motion traz em `static/animations/CarnegieMellonAnimations/` não
+entram no editor.
+
 ## Bibliotecas incluídas na interface
 
 | Biblioteca | Licença |

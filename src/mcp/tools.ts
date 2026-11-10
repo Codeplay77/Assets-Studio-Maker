@@ -21,6 +21,10 @@ import type {
   Vec3,
 } from "../core/types";
 import { blockTriangles, countTriangles, type ExportOptions } from "../export/glb";
+import { countVehicles } from "../export/vehicles";
+import { ANIMATION_CATEGORIES, clipDuration, CLIPS, getClip } from "../animation/clips";
+import { chooseCharacter, previewClip, seek, setInPlace, stopPreview } from "../animation/player";
+import { findRigs } from "../animation/rig";
 import { ART_STYLES, blocksStyle, DEFAULT_STYLE, styleName, styleOfBlock, type ArtStyle } from "../blocks/styles";
 import { generators, validateSettings, type GeneratorSettings } from "../generators";
 import { convertParts } from "../modeling/convert";
@@ -1090,7 +1094,22 @@ const tools: Tool[] = [
       name: { type: "string", description: "File name without extension. Defaults to the project's name." },
       ids: { ...IDS, description: "Exports only these parts." },
       merge: { type: "boolean", description: "Joins everything into one mesh. Defaults to false." },
-      center: { type: "boolean", description: "Puts the base of the model at the origin. Defaults to true." },
+      center: { type: "boolean", description: "Puts the base of the model at the origin. A lone vehicle is put at the origin facing +Z. Defaults to true." },
+      vehicles: {
+        type: "boolean",
+        description:
+          "Gives each vehicle its own node, on the ground between its axles, with every wheel in a node centered on its axle (roda_dianteira_esquerda, roda_traseira_2_direita, roda_carreta_1_esquerda...) so a game can spin and steer it. Wheel radius and width go in the node extras. Defaults to true.",
+      },
+      godot: {
+        type: "boolean",
+        description:
+          "Names and marks vehicles so Godot 4 imports each one as a VehicleBody3D with VehicleWheel3D wheels and a box CollisionShape3D, and ends repeating animations in -loop so Godot loops them. Defaults to true.",
+      },
+      animations: {
+        type: "boolean",
+        description:
+          "Exports each character that has animations (see set_animations) as one skinned mesh with a skeleton named like the Unreal mannequin (pelvis, spine_03, upperarm_l...) and its clips, named in plain Portuguese (andar, parado, pistola_atirar). Defaults to true.",
+      },
     }),
     async run(args, deps) {
       const { project } = await deps.getState();
@@ -1100,17 +1119,110 @@ const tools: Tool[] = [
       if (parts.length === 0) throw new Error("não há peças para exportar");
 
       const name = readOptionalString(args, "name") ?? project.name;
+      const vehicles = readBoolean(args, "vehicles", true);
+      const animations = readBoolean(args, "animations", true) ? project.animations : undefined;
       const options = {
         name,
         merge: readBoolean(args, "merge", false),
         center: readBoolean(args, "center", true),
+        vehicles,
+        godot: readBoolean(args, "godot", true),
+        animations,
       };
       const bytes = new Uint8Array(await deps.exportGlb(parts, options));
       const path = await deps.saveExport(name, bytes);
-      return text({ path, parts: parts.length, triangles: countTriangles(parts), bytes: bytes.length });
+      const exported = new Set(parts.map((part) => part.id));
+      const clips = Object.entries(animations ?? {}).filter(([id]) => exported.has(Number(id))).reduce((total, [, list]) => total + list.length, 0);
+      return text({ path, parts: parts.length, triangles: countTriangles(parts), vehicles: vehicles ? countVehicles(parts) : 0, animations: clips, bytes: bytes.length });
+    },
+  },
+  {
+    name: "list_animations",
+    title: "List animations",
+    description:
+      "Lists the ready-made animations (CC0, from Mesh2Motion) that any generated person can play, in every art style, and the characters in the scene with the animations each one carries. A character is a person from the person generator; it is referred to by the id of its hips part.",
+    readOnly: true,
+    inputSchema: object({
+      category: { type: "string", enum: [...ANIMATION_CATEGORIES], description: "Only this category." },
+      search: { type: "string", description: "Only clips whose name contains this, in Portuguese or English." },
+    }),
+    async run(args, deps) {
+      const category = readOptionalString(args, "category");
+      const search = readOptionalString(args, "search")?.toLowerCase();
+      const clips = CLIPS.filter((clip) => (!category || clip.category === category) && (!search || clip.label.toLowerCase().includes(search) || clip.id.toLowerCase().includes(search)));
+      const { project } = await deps.getState();
+      const characters = findRigs(project.parts).map((rig) => ({ hips: rig.root, parts: rig.parts.length, animations: project.animations?.[String(rig.root)] ?? [] }));
+      return text({
+        categories: ANIMATION_CATEGORIES,
+        clips: clips.map((clip) => ({ id: clip.id, name: clip.label, category: clip.category, seconds: Math.round(clipDuration(clip) * 100) / 100, loops: clip.loop, travels: clip.moves })),
+        characters,
+      });
+    },
+  },
+  {
+    name: "set_animations",
+    title: "Choose a character's animations",
+    description:
+      "Chooses the animations a character carries when the scene is exported, replacing what it had. Give any part of the character and clip ids from list_animations. An empty list takes them all away. Undoable.",
+    activity: "Escolhendo animações",
+    inputSchema: object(
+      {
+        part: { type: "integer", description: "Any part of the character, for example its hips." },
+        clips: { type: "array", items: { type: "string" }, description: "Clip ids, such as Walk or Idle_A." },
+      },
+      ["part", "clips"],
+    ),
+    async run(args, deps) {
+      const rig = await characterOf(readId(args, "part"), deps);
+      const value = args.clips;
+      if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) throw new Error('"clips" precisa ser uma lista de nomes de animação');
+      const unknown = value.filter((id) => !getClip(id));
+      if (unknown.length > 0) throw new Error(`animações desconhecidas: ${unknown.join(", ")}. Use list_animations para ver as que existem`);
+      await deps.apply({ type: "setAnimations", part: rig.root, clips: value });
+      return text({ hips: rig.root, animations: value });
+    },
+  },
+  {
+    name: "preview_animation",
+    title: "Preview an animation",
+    description:
+      "Poses a character at a moment of an animation in the viewport, without changing the project, so capture_view shows it. Call it with no clip to put the character back as it was.",
+    activity: "Mostrando animação",
+    inputSchema: object(
+      {
+        part: { type: "integer", description: "Any part of the character." },
+        clip: { type: "string", description: "Clip id from list_animations. Leave out to stop the preview." },
+        time: { type: "number", description: "Seconds from the start of the clip. Defaults to 0." },
+        in_place: { type: "boolean", description: "Keeps a clip that travels in place. Defaults to false." },
+      },
+      ["part"],
+    ),
+    async run(args, deps) {
+      const clipId = readOptionalString(args, "clip");
+      if (!clipId) {
+        stopPreview();
+        return text({ previewing: false });
+      }
+      const clip = getClip(clipId);
+      if (!clip) throw new Error(`animação desconhecida: ${clipId}. Use list_animations para ver as que existem`);
+      const rig = await characterOf(readId(args, "part"), deps);
+      chooseCharacter(rig.root);
+      await previewClip(clip.id);
+      setInPlace(readBoolean(args, "in_place", false));
+      const time = Math.min(Math.max(0, readNumber(args, "time", 0)), clipDuration(clip));
+      seek(time);
+      return text({ previewing: clip.id, hips: rig.root, time, seconds: clipDuration(clip) });
     },
   },
 ];
+
+/** The character a part belongs to. */
+async function characterOf(part: PartId, deps: ToolDeps) {
+  const { project } = await deps.getState();
+  const rig = findRigs(project.parts).find((candidate) => candidate.parts.some((item) => item.id === part));
+  if (!rig) throw new Error(`a peça ${part} não faz parte de um personagem. Gere uma pessoa com generate para animar`);
+  return rig;
+}
 
 export function listTools() {
   return {

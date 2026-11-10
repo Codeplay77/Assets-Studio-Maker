@@ -153,6 +153,8 @@ export class EditorViewport {
   private previewGeometry: THREE.BufferGeometry | null = null;
   private snapEnabled = true;
   private readonly meshes = new Map<PartId, PartMesh>();
+  /** An animation being previewed: where each posed part is shown instead of where it is. */
+  private pose: Map<PartId, { position: Vec3; rotation: Quat }> | null = null;
   private readonly ghost: PartMesh;
   private readonly markers: THREE.Mesh[] = [];
 
@@ -544,10 +546,26 @@ export class EditorViewport {
     mesh.userData.group = part.group;
     for (const material of this.tintedMaterials(mesh)) material.color.set(part.color);
     if (this.transforming && this.selected.includes(part.id)) return;
-    mesh.position.fromArray(part.position);
-    mesh.quaternion.fromArray(part.rotation);
+    const posed = this.pose?.get(part.id);
+    mesh.position.fromArray(posed?.position ?? part.position);
+    mesh.quaternion.fromArray(posed?.rotation ?? part.rotation);
     mesh.scale.fromArray(part.scale);
     mesh.updateMatrixWorld();
+  }
+
+  /**
+   * Shows parts in an animation pose without changing the project; `null` puts them back. Called
+   * on every frame of a preview, so it only moves the parts the pose names.
+   */
+  setPose(pose: Map<PartId, { position: Vec3; rotation: Quat }> | null): void {
+    const previous = this.pose;
+    this.pose = pose;
+    if (this.project) {
+      const ids = new Set([...(pose?.keys() ?? []), ...(previous?.keys() ?? [])]);
+      for (const part of this.project.parts) if (ids.has(part.id)) this.syncPart(part);
+    }
+    if (Boolean(pose) !== Boolean(previous)) this.applySelection();
+    this.requestRender();
   }
 
   /** Even slots follow the part's color; odd ones keep their own. */
@@ -578,7 +596,8 @@ export class EditorViewport {
     }
 
     const meshes = this.selectedMeshes();
-    if (meshes.length === 0) {
+    // A posed part is not where the project has it, so moving it would save the pose.
+    if (meshes.length === 0 || this.pose) {
       this.gizmo.detach();
     } else if (meshes.length === 1) {
       if (this.gizmo.object !== meshes[0]) this.gizmo.attach(meshes[0]);

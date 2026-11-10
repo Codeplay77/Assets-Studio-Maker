@@ -25,7 +25,7 @@ REGIONS = {
     "BOTTOM": "carbon", "SILL": "paint", "NOSE": "paint", "FENDER": "paint", "DOOR_F": "paint",
     "DOOR_R": "paint", "QUARTER": "paint", "TAIL": "paint", "HOOD": "paint", "COWL": "plastic",
     "ROOF": "paint", "TRUNK": "paint", "RAIL": "paint", "PILLAR": "carbon", "GLASS": "glass",
-    "STRIPE": "trim", "GAP": "carbon", "CARVE": "rubber", "FRAME": "rubber",
+    "STRIPE": "trim", "GAP": "plastic", "CARVE": "rubber", "FRAME": "rubber",
 }
 
 GAPS = [
@@ -118,17 +118,24 @@ def stations_for(d):
 
     tail_y = -L
     room = y_d0 - tail_y
+    # An upright rear window keeps the shape of the roof all the way down, or its glass buckles.
+    upright = d["rw"] < 0.35
     if d.get("flat_back"):
         st("T0", tail_y, roof - 0.035, belt, hw * waist * d.get("tail_w", 0.97), 1, zb + d.get("tail_up", 0.1))
         st("T1", tail_y + 0.08, roof - 0.012, belt, hw * waist, 1, zb + 0.03)
+    elif d.get("hatch_back"):
+        # A hatch, a wagon or an SUV: the rear glass ends at the back and the tailgate drops straight
+        # to the bumper, with the same section as the glass above it, so there is no shelf.
+        g = 1 if upright else 0.06
+        w = hw * waist if upright else hw
+        st("T0", tail_y, deck - 0.01, belt, w * d.get("tail_w", 0.97), g, zb + d.get("tail_up", 0.1))
+        st("T1", tail_y + 0.04, deck + 0.004, belt, w, g, zb + 0.03)
     else:
         st("T0", tail_y, tail - 0.012, tail - 0.1, hw * d.get("tail_w", 0.9), 0, zb + d.get("tail_up", 0.1))
         st("T1", tail_y + 0.08, tail + 0.012, tail - 0.04, hw * 0.975, 0, zb + 0.03)
     if room > 0.42:
         st("D2", tail_y + room * 0.42, lerp(tail, deck, 0.82) + 0.01, lerp(tail, belt, 0.7) - 0.02, hw * 0.996, 0)
         st("D1", y_d0 - 0.08, deck + 0.01, belt - 0.012, hw, 0)
-    # An upright rear window keeps the shape of the roof all the way down, or its glass buckles.
-    upright = d["rw"] < 0.35
     st("D0", y_d0, deck + 0.02, belt, hw * waist if upright else hw, 1 if upright else 0.06)
     st("RW", lerp(y_d0, y_rr, 0.5), lerp(deck, roof, 0.5 if upright else 0.62), belt, hw * waist if upright else hw, 1 if upright else 0.62)
     st("R3", y_rr, roof - 0.018, belt, hw * waist, 1)
@@ -148,8 +155,8 @@ def stations_for(d):
     if y_hl > y_cowl + 0.2:
         st("H1", lerp(y_cowl, y_hl, 0.5), lerp(cowl, hl, 0.48) + crown * 0.3, lerp(belt, hl, 0.4) - 0.03, hw, 0)
     st("N2", max(y_hl, y_cowl + 0.13), hl + crown * 0.12, hl - 0.06, hw * 0.99, 0)
-    st("N1", L - 0.08, lerp(hl, n, 0.72), n - 0.05, hw * 0.955, 0, zb + 0.02)
-    st("N0", L, n - 0.018, n - 0.1, hw * d.get("nose_w", 0.88), 0, zb + 0.09)
+    st("N1", L - 0.08, lerp(hl, n, 0.72), n - 0.05, hw * 0.972, 0, zb + 0.02)
+    st("N0", L, n - 0.018, n - 0.1, hw * d.get("nose_w", 0.92), 0, zb + 0.09)
     return out
 
 
@@ -360,7 +367,7 @@ def toy_car(d):
     t["box"] = d.get("box", 0.0) * 0.55
     t["crown"] = max(d.get("crown", 0.05), 0.08)
     t["waist"] = min(d.get("waist", 0.985), 0.95)
-    t["nose_w"] = d.get("nose_w", 0.88) * 0.95
+    t["nose_w"] = d.get("nose_w", 0.92) * 0.95
     t["tail_w"] = d.get("tail_w", 0.9) * 0.95
     t["flare"] = max(d.get("flare", 0.03), 0.07) + 0.015
     t["flare_lift"] = max(d.get("flare_lift", 0.012), 0.035)
@@ -462,7 +469,8 @@ def arch(surface, y, z, radius, side, floor, width=0.03, lift=0.012, mat="z_pain
 
     columns = [lerp(start, end, i / 28) for i in range(29)]
     rows = [(radius - 0.004, -lift * 0.6, mat), (radius + 0.0005, lift * 0.62, mat), (radius + width * 0.3, lift, mat), (radius + width * 0.7, lift * 0.74, mat), (radius + width, 0.0, mat), (radius + width + 0.01, -0.008)]
-    fade = lambda a: lerp(-0.25, 1.0, smoothstep(0, 8, min(a - start, end - a)))
+    # The ends melt into the body slowly, so the lip never ends in a ragged tip by the sill.
+    fade = lambda a: lerp(-0.25, 1.0, smoothstep(0, 14, min(a - start, end - a)))
     return drape("arch", surface, columns, rows, ray, fade=fade)
 
 
@@ -482,18 +490,31 @@ def handle(surface, y, z, side, width=0.15, height=0.03):
 
 def plate(surface, y, z, sign, width=0.46, height=0.13):
     outline = rounded([(-width / 2, -height / 2), (width / 2, -height / 2), (width / 2, height / 2), (-width / 2, height / 2)], 0.012)
-    patch("plate", surface, outline, (0, y, z), (0, sign, 0), [(0, 0.004, "z_plastic"), (0.006, 0.012, "z_plastic"), (0.014, 0.012, "z_plate")], fill="z_plate", step=0.06)
+    patch("plate", surface, outline, (0, y, z), (0, sign, 0), [(0, 0.003, "z_plastic"), (0.004, 0.009, "z_plastic"), (0.008, 0.01, "z_plate")], fill="z_plate", step=0.04)
 
 
 def box_shape(w, h, r):
     return rounded([(-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2)], r)
 
 
-def glow_lamp(surface, outline, center, axis, mirror, fill, rim="z_dark_metal", step=0.026):
-    # A rim this thin would turn into a stray black voxel next to the lamp.
+def glow_lamp(surface, outline, center, axis, mirror, fill, rim="z_plastic", step=0.018):
+    """A lamp unit lying on the body, with a thin seam around it."""
+    # A rim this thin, or a dark housing, would turn into stray black blocks next to the light.
     if vk.LOD == "vx":
+        if fill == "z_dark_metal":
+            fill = "z_light"
         rim = fill
-    patch("lamp", surface, outline, center, axis, [(0, -0.003, rim), (0.008, 0.009, rim), (0.016, 0.009, fill)], fill=fill, mirror=mirror, step=step)
+    patch("lamp", surface, outline, center, axis, [(0, -0.002, rim), (0.004, 0.005, rim), (0.007, 0.005, fill)], fill=fill, fill_offset=0.005, mirror=mirror, step=step)
+
+
+def bowl(surface, x, y, z, axis, radius, mirror, lens="z_light"):
+    """A round reflector with its lens, inside a headlight."""
+    patch("reflector", surface, circle(radius, 36), (x, y, z), axis, [(0, 0.007, "z_chrome"), (radius * 0.42, 0.009, lens)], fill=lens, fill_offset=0.01, mirror=mirror, step=0.008)
+
+
+def strip(surface, x, y, z, axis, width, mirror, mat="z_light", height=0.014):
+    """A thin LED strip, like the daytime running lights of a modern car."""
+    patch("drl", surface, box_shape(width, height, height * 0.45), (x, y, z), axis, [(0, 0.008, mat)], fill=mat, fill_offset=0.008, mirror=mirror, step=0.012)
 
 
 def headlights(d, surface):
@@ -502,27 +523,34 @@ def headlights(d, surface):
     for s in (-1, 1):
         flip = s < 0
         if style == "wedge":
-            direction = (s * 0.55, 1.0, 0.1)
-            center = (s * (hw - 0.26), L - 0.2, z)
-            outline = rounded([(-0.24, -0.05), (0.2, -0.06), (0.25, 0.04), (0.08, 0.075), (-0.25, 0.05)], 0.035)
-            glow_lamp(surface, outline, center, direction, flip, "z_chrome", step=0.024)
-            patch("projector", surface, circle(0.04), (s * (hw - 0.33), L - 0.13, z), direction, [(0, 0.012, "z_dark_metal"), (0.008, 0.014, "z_light")], fill="z_light", mirror=flip, step=0.02)
-            patch("projector", surface, circle(0.03), (s * (hw - 0.18), L - 0.25, z + 0.005), direction, [(0, 0.012, "z_dark_metal"), (0.007, 0.014, "z_light")], fill="z_light", mirror=flip, step=0.02)
+            # A modern headlight: a dark housing that follows the edge of the hood, two chrome
+            # reflectors with their lenses and an LED strip along the bottom.
+            direction = (s * 0.38, 1.0, 0.14)
+            center = (s * (hw - 0.29), L - 0.15, z)
+            outline = rounded([(-0.28, -0.045), (0.21, -0.06), (0.28, 0.03), (0.12, 0.066), (-0.28, 0.056)], 0.03)
+            glow_lamp(surface, outline, center, direction, flip, "z_dark_metal", step=0.014)
+            bowl(surface, s * (hw - 0.38), L - 0.1, z + 0.004, direction, 0.04, flip)
+            bowl(surface, s * (hw - 0.22), L - 0.18, z + 0.008, direction, 0.033, flip)
+            strip(surface, s * (hw - 0.3), L - 0.14, z - 0.034, direction, 0.36, flip)
         elif style == "slim":
             direction = (s * 0.5, 1.0, 0.05)
             center = (s * (hw - 0.3), L - 0.16, z + 0.06)
             outline = rounded([(-0.28, -0.022), (0.26, -0.03), (0.3, 0.02), (-0.3, 0.03)], 0.016)
-            glow_lamp(surface, outline, center, direction, flip, "z_light", step=0.03)
+            glow_lamp(surface, outline, center, direction, flip, "z_light", step=0.016)
         elif style == "round":
             direction = (s * 0.18, 1.0, 0.04)
             round_lamp(surface, s * (hw - 0.3), L, z, direction, d.get("lamp_r", 0.1))
         elif style == "square":
-            direction = (s * 0.3, 1.0, 0.02)
+            # A square unit: a big reflector toward the middle and a slim indicator at the corner.
+            direction = (s * 0.3, 1.0, 0.04)
             center = (s * (hw - 0.27), L, z)
             size = d.get("lamp_size", (0.3, 0.15))
-            glow_lamp(surface, box_shape(size[0], size[1], 0.024), center, direction, flip, "z_chrome", step=0.03)
-            patch("lens", surface, box_shape(size[0] * 0.42, size[1] * 0.7, 0.02), (center[0] - s * size[0] * 0.2, L, z), direction, [(0, 0.014, "z_light")], fill="z_light", mirror=flip, step=0.03)
-            patch("lens", surface, box_shape(size[0] * 0.3, size[1] * 0.6, 0.02), (center[0] + s * size[0] * 0.24, L, z), direction, [(0, 0.014, "z_amber")], fill="z_amber", mirror=flip, step=0.03)
+            glow_lamp(surface, box_shape(size[0], size[1], 0.024), center, direction, flip, "z_dark_metal", step=0.016)
+            radius = min(size[1] * 0.34, size[0] * 0.2)
+            bowl(surface, center[0] - s * size[0] * 0.18, L, z + size[1] * 0.06, direction, radius, flip)
+            bowl(surface, center[0] + s * size[0] * 0.08, L, z + size[1] * 0.06, direction, radius * 0.8, flip)
+            strip(surface, center[0] - s * size[0] * 0.05, L, z - size[1] * 0.32, direction, size[0] * 0.62, flip)
+            patch("lens", surface, box_shape(size[0] * 0.14, size[1] * 0.7, 0.012), (center[0] + s * size[0] * 0.36, L, z), direction, [(0, 0.008, "z_amber")], fill="z_amber", fill_offset=0.008, mirror=flip, step=0.012)
 
 
 def taillights(d, surface):
@@ -914,9 +942,14 @@ def round_lamp(surface, x, y, z, direction, radius, lens="z_light", ring="z_chro
     aim = V(direction).normalized()
     found = surface.hit(V((x, y, z)) + aim * 3.0, -aim)
     point = found[0] if found else V((x, y, z))
-    matrix = Matrix.Translation(point) @ V((1, 0, 0)).rotation_difference(aim).to_matrix().to_4x4()
-    kit.lathe("ring", [(-0.03, radius + 0.024), (0.006, radius + 0.024), (0.018, radius + 0.016), (0.018, radius * 0.97), (0.008, radius * 0.92)], 26, mat=ring, sharp_angle=46.0, mtx=matrix)
-    kit.lathe("lens", [(0.008, radius * 0.93), (0.026, radius * 0.76), (0.04, radius * 0.46), (0.046, 0.0005)], 22, mat=lens, sharp_angle=70.0, mtx=matrix)
+    # Square to the body where it sits, half the way toward the direction it points.
+    normal = found[1] if found else aim
+    if normal.dot(aim) < 0:
+        normal = -normal
+    facing = normal.lerp(aim, 0.5).normalized()
+    matrix = Matrix.Translation(point) @ V((1, 0, 0)).rotation_difference(facing).to_matrix().to_4x4()
+    kit.lathe("ring", [(-0.04, radius + 0.022), (0.002, radius + 0.022), (0.01, radius + 0.014), (0.01, radius * 0.97), (0.0, radius * 0.92)], 32, mat=ring, sharp_angle=46.0, mtx=matrix)
+    kit.lathe("lens", [(0.0, radius * 0.93), (0.012, radius * 0.76), (0.02, radius * 0.46), (0.024, 0.0005)], 28, mat=lens, sharp_angle=70.0, mtx=matrix)
 
 
 def car_details(d, surface, axles):
@@ -925,9 +958,11 @@ def car_details(d, surface, axles):
     trim = d.get("bumper_mat", "z_paint")
     lip = d.get("lip", "z_plastic")
     if d.get("bumpers", "body") == "body":
-        r = axles[0][1] * 1.18 + 0.05
-        front = bumper(surface, axles[0][0] + r - 0.36, axles[0][0] + r, hw, d["h_nose"] - d.get("bumper_gap", 0.14), zb + 0.07, depth=d.get("bumper_depth", 0.032), mat=trim, lip=lip)
-        rear = bumper(surface, axles[1][0] - r + 0.36, axles[1][0] - r, hw, d.get("rear_bumper", d["h_tail"] - 0.24), zb + 0.07, depth=d.get("bumper_depth", 0.03), mat=trim, lip=lip, name="bumper_rear")
+        # The bumper wraps the corner but stops short of the wheel arch, or its end tears on the cut.
+        r = axles[0][1] * ARCH + 0.11
+        front = bumper(surface, axles[0][0] + r - 0.36, axles[0][0] + r, hw, d["h_nose"] - d.get("bumper_gap", 0.14), zb + 0.035, depth=d.get("bumper_depth", 0.032), mat=trim, lip=lip)
+        rear_top = d.get("rear_bumper", zb + 0.45 if d.get("hatch_back") else d["h_tail"] - 0.24)
+        rear = bumper(surface, axles[1][0] - r + 0.36, axles[1][0] - r, hw, rear_top, zb + 0.035, depth=d.get("bumper_depth", 0.03), mat=trim, lip=lip, name="bumper_rear")
         both = Surface(surface.owner, front, rear)
     else:
         both = surface
@@ -938,7 +973,8 @@ def car_details(d, surface, axles):
     headlights(d, surface)
     taillights(d, surface)
 
-    plate(both, L, zb + d.get("plate_f", 0.28), 1)
+    # The front plate sits under the lip of the bumper, never across it.
+    plate(both, L, zb + d.get("plate_f", 0.24), 1)
     plate(both, -L, zb + d.get("plate_r", 0.34), -1)
     if d.get("intake", True) and d.get("bumpers", "body") == "body":
         w = d.get("intake_w", 0.5)
@@ -956,8 +992,13 @@ def car_details(d, surface, axles):
     r = axles[0][1] * 1.18 + 0.03
     for s in (-1, 1):
         skirt(surface, rear_y + r - 0.06, front_y - r + 0.06, zb + d.get("skirt_h", 0.12), zb + 0.015, s, depth=d.get("skirt_depth", 0.02), mat=d.get("skirt_mat", "z_plastic"))
+        # The strip of body between a wheel arch and the end of the bumper gets the same lower trim,
+        # so the bottom edge stays dark all the way around instead of leaving a painted flap.
+        if d.get("bumpers", "body") == "body":
+            skirt(surface, front_y + r - 0.05, front_y + r + 0.14, zb + d.get("skirt_h", 0.12) * 0.8, zb + 0.015, s, depth=d.get("skirt_depth", 0.02), mat=lip)
+            skirt(surface, rear_y - r - 0.14, rear_y - r + 0.05, zb + d.get("skirt_h", 0.12) * 0.8, zb + 0.015, s, depth=d.get("skirt_depth", 0.02), mat=lip)
         for y, radius in axles:
-            arch(surface, y, radius, radius * ARCH, s, zb + 0.09, width=d.get("flare", 0.03), lift=d.get("flare_lift", 0.012), mat=d.get("flare_mat", "z_paint"))
+            arch(surface, y, radius, radius * ARCH, s, zb + 0.14, width=d.get("flare", 0.03), lift=d.get("flare_lift", 0.012), mat=d.get("flare_mat", "z_paint"))
         if d.get("toy"):
             pass
         elif d.get("doors", 4) == 4:
@@ -1064,19 +1105,37 @@ CARS["van"] = design(
 )
 CARS["furgao"] = design("Furgão", base="van", windows=False, doors=2, b=None, pillars=(), sliding=False, van_rows=0, side_stripe="z_accent", side_z=1.05, side_h=0.08, regions={"PILLAR": "paint"})
 
+# Hatches, wagons and SUVs end in a tailgate, not in a trunk.
+HATCH_BACKS = {
+    "hatch": dict(rw=0.24, h_deck=1.04, plate_r=0.56),
+    "hatch_esportivo": dict(rw=0.24, h_deck=0.99, plate_r=0.52),
+    "perua": dict(rw=0.18, h_deck=1.06, plate_r=0.56),
+    "compacto": dict(rw=0.14, h_deck=1.1, plate_r=0.54),
+    "suv_compacto": dict(rw=0.22, h_deck=1.22, plate_r=0.6),
+    "suv_medio": dict(rw=0.24, h_deck=1.26, plate_r=0.6),
+    "suv_grande": dict(rw=0.22, h_deck=1.36, plate_r=0.62),
+    "jipe": dict(rw=0.1, h_deck=1.34),
+    "suv_esportivo": dict(h_deck=1.24, plate_r=0.58),
+}
+for key, values in HATCH_BACKS.items():
+    CARS[key].update(hatch_back=True, **values)
+
 CARS["ambulancia"] = design(
     "Ambulância", base="van", L=5.9, W=2.04, roof=3.8, h_roof=2.78, h_deck=2.76, h_tail=2.74, roof_w=0.97, box=0.88, windows=False, doors=2, b=None,
     pillars=(), sliding=False, van_rows=0, side_stripe="z_accent", side_z=1.04, side_h=0.2, regions={"PILLAR": "paint"}, extras=("cross",), front=1.96, rear=-1.8,
     rear_glass_bottom=1.62, rear_glass_gap=0.5,
 )
 CARS["policia_sedan"] = design("Sedã", regions={"DOOR_F": "trim", "DOOR_R": "trim"}, wheel="calota")
-CARS["policia_suv"] = design("SUV médio", base="suv_medio", regions={"DOOR_F": "trim", "DOOR_R": "trim"}, extras=(), chrome_rails=False, belt_trim=None, wheel="liga")
+CARS["policia_suv"] = design("SUV médio", base="suv_medio", hatch_back=True, regions={"DOOR_F": "trim", "DOOR_R": "trim"}, extras=(), chrome_rails=False, belt_trim=None, wheel="liga")
 
 
 def car(name):
     vk.prepare()
     set_arch(False)
     d = toy_car(CARS[name]) if vk.STYLE == "arcade" else dict(CARS[name])
+    if d.get("hatch_back"):
+        # The roof runs to the back; the rear glass ends a few centimeters from it.
+        d["roof"] = d["L"] - d["hood"] - d["ws"] - d["rw"] - 0.08
     if d.get("flat_back"):
         d["carve"] = list(d.get("carve", ())) + window_holes(d)
     axles = [(d["front"], d["r"]), (d["rear"], d["r"])]
@@ -1102,7 +1161,7 @@ def car(name):
 CAB_FLAT = dict(
     L=2.14, W=2.4, zb=0.82, hood=0.38, ws=0.42, roof=1.18, rw=0.02, h_nose=1.66, h_hl=1.74, h_cowl=1.86, h_belt=1.88,
     h_roof=2.92, h_deck=2.3, h_tail=1.8, roof_w=1.02, box=0.82, waist=1.0, b=0.72, doors=2, windows=False, crown=0.01,
-    nose_w=0.965, tail_w=1.0, hl=0.25, sill=0.12, lamp="square", lamp_size=(0.34, 0.2), lamp_drop=0.72, tail="none", grille=(1.5, 0.42, 1.34),
+    nose_w=0.965, tail_w=1.0, hl=0.25, sill=0.12, lamp="square", lamp_size=(0.3, 0.2), lamp_drop=0.44, tail="none", grille=(1.36, 0.42, 1.34),
     grille_style="bars", bumpers="none", exhaust=0, r=0.5, regions={"COWL": "carbon"}, no_cab_details=True, rear_glass=False,
 )
 CAB_NOSE = dict(
@@ -1914,19 +1973,23 @@ def bus_interior(b, d, body, hw, L, y_cowl, y_rf, y_tail, doors):
     """Lining, floor, rows of seats and the driver's place, seen through the windows."""
     lining(body, -L - 0.1, L + 0.1)
     floor = b["h_belt"] - 0.74
-    kit.rbox("floor", (2 * hw - 0.12, 2 * L - 0.4, 0.04), (0, 0, floor), mat="z_cabin", bevel=0)
+    end = y_cowl - 1.5
+    kit.rbox("floor", (2 * hw - 0.2, end + L - 0.3, 0.04), (0, (end - L + 0.3) / 2, floor), mat="z_cabin", bevel=0)
     front = y_cowl - 1.55
     for s in (-1, 1):
         bus_seats(hw, y_tail, front, floor, s, skip=doors if s > 0 else ())
     if b.get("upper"):
         upper = b["h_upper"] - 0.02
-        kit.rbox("upper_floor", (2 * hw - 0.12, 2 * L - 0.4, 0.06), (0, 0, upper), mat="z_cabin", bevel=0)
+        front = y_rf - 0.1
+        kit.rbox("upper_floor", (2 * hw - 0.2, front + L - 0.3, 0.06), (0, (front - L + 0.3) / 2, upper), mat="z_cabin", bevel=0)
         for s in (-1, 1):
             bus_seats(hw, y_tail, y_rf - 0.2, upper, s)
     driver = -(hw - 0.55)
-    car_seat(driver, y_cowl - 1.25, floor + 0.5, width=0.52, back=0.68)
-    # A bus driver sits high, with the wheel almost flat in front of the knees.
-    dashboard(Surface(body), y_cowl - 0.05, y_cowl - 0.55, floor + 0.82, hw - 0.1, driver, wheel_radius=0.24, wheel_tilt=34)
+    dash = d["h_cowl"] + 0.3
+    kit.rbox("driver_floor", (1.1, 1.6, 0.04), (driver, y_cowl - 1.0, dash - 0.84), mat="z_cabin", bevel=0)
+    car_seat(driver, y_cowl - 1.25, dash - 0.34, width=0.52, back=0.68)
+    # The wheel lies almost flat in front of the driver's knees.
+    dashboard(Surface(body), y_cowl - 0.05, y_cowl - 0.55, dash, hw - 0.1, driver, wheel_radius=0.24, wheel_tilt=34)
 
 
 # --- motorcycles ------------------------------------------------------------------------------

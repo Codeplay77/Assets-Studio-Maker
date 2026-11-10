@@ -1,0 +1,47 @@
+# Gera o instalador do Windows quando uma tag de versão (v0.2.0, por exemplo) é enviada, e o
+# coloca num rascunho de versão no GitHub. O rascunho só fica público quando alguém o publica.
+name: Versão
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  instalador:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Testes da interface
+        run: pnpm test
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Gerar o instalador
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Assets Studio Maker ${{ github.ref_name }}
+          releaseBody: Instalador para Windows. Veja o que mudou no README.
+          releaseDraft: true

@@ -10,11 +10,13 @@ para Windows.
 
 ## O que já funciona
 
-- Biblioteca com 606 modelos prontos em CC0: veículos, construções, ruas, autódromo, natureza e
-  personagens
-- Mais de 1.300 peças próprias para montar, nos estilos Low poly, Realista, Blocos e Arcade: karts,
+- Biblioteca com 536 modelos prontos em CC0: veículos, construções, ruas, natureza e personagens
+- Mais de 1.500 peças próprias para montar, nos estilos Low poly, Realista, Blocos e Arcade: karts,
   carros, caminhões, ônibus, carretas, motos, casas, prédios, corpo, rosto, cabelo e chapéus, rodas,
   ruas, mobiliário urbano e natureza
+- 162 animações prontas em CC0 para as pessoas geradas, em todos os estilos, com prévia no editor
+  e exportação com esqueleto
+- Veículos prontos para jogo: rodas que giram, caixa de colisão e importação direta no Godot
 - Materiais por peça: fosco, pintura brilhante, metal, vidro e luzes acesas
 - Geradores com opções e estilo único: pessoa (homem, mulher, adulto, criança e mais), veículo
   (carros, karts, motos, caminhões, ônibus e carretas), prédio, casa, árvore, cidade (com ruas irregulares, orgânicas ou em grade) e mapa
@@ -64,6 +66,25 @@ Cada face pode ter cor e acabamento próprios. As formas ficam em **Minhas forma
 coloca outras cópias na cena. Alterar uma forma muda todas as peças que a usam. Para criar uma
 variação, faça uma cópia independente nesse mesmo painel.
 
+## Animar
+
+Na aba **Animar**, escolha o personagem e clique numa animação para ver o personagem se mexer. São
+162 animações prontas, em categorias como andar e correr, luta, espada, armas, magia, gestos,
+dança, tarefas, nadar e escalar. Marque as que o personagem deve levar no arquivo: a escolha fica
+salva no projeto e cada mudança pode ser desfeita com Ctrl+Z. Nas animações que andam para algum
+lugar, **Sem sair do lugar** mantém o personagem parado na prévia.
+
+Funciona com qualquer pessoa do gerador, nos quatro estilos. O editor reconhece os blocos do corpo
+(quadril, tronco, pescoço, cabeça, braços, antebraços, mãos, coxas, canelas e sapatos), monta o
+esqueleto pelos encaixes, e o resto (rosto, cabelo, chapéu, saia, mochila) acompanha o osso onde
+está encaixado. As animações se ajustam à altura e às proporções de cada personagem.
+
+Ao exportar, cada personagem com animações vira uma malha com esqueleto. Os ossos têm os nomes do
+manequim da Unreal (`pelvis`, `spine_03`, `upperarm_l`...), que o Godot reconhece no
+redirecionamento de animações humanoides. As animações saem com nomes simples em português, como
+`andar`, `parado` e `pistola_atirar`. Com **Pronto para o Godot**, as que se repetem, como andar e
+correr, já chegam em ciclo.
+
 ## Exportar para um jogo
 
 Clique em **Exportar** (ou Ctrl+E) e escolha:
@@ -73,6 +94,47 @@ Clique em **Exportar** (ou Ctrl+E) e escolha:
 - **Centralizar na origem**, que coloca a base do modelo no ponto zero
 
 As cores vão nos vértices do modelo, então não há textura para copiar junto com o arquivo.
+
+### Veículos prontos para jogo
+
+Quando há veículos na cena, o diálogo mostra mais duas opções.
+
+**Veículos prontos para jogo** dá a cada veículo um nó próprio, no chão, entre os eixos e de frente
+para +Z. Cada roda vira um nó no centro do eixo, para o jogo girar e esterçar:
+`roda_dianteira_esquerda`, `roda_traseira_2_direita` e assim por diante. Os dois pneus de um rodado
+duplo ficam no mesmo nó. A carreta sai como outro veículo, com a origem embaixo do pino-rei e rodas
+chamadas `roda_carreta_1_esquerda`. Um veículo exportado sozinho fica no ponto zero, mesmo que esteja
+girado na cena.
+
+Cada nó leva dados extras (`extras` no glTF), que o jogo pode ler:
+
+| Nó | Dados |
+| --- | --- |
+| Veículo | `rodas`, `colisao` (centro e tamanho da caixa), `engate` no cavalo e `pino_rei` na carreta |
+| Roda | `raio`, `largura`, `direcao` (esterça), `tracao` e `dupla` |
+
+**Pronto para o Godot** faz o Godot 4 montar tudo ao importar: o veículo vira um `VehicleBody3D`,
+as rodas viram `VehicleWheel3D` e a carroceria ganha uma caixa de colisão (`CollisionShape3D`). Foi
+testado no Godot 4.7. O Godot não lê o raio das rodas do arquivo, então coloque este script em
+qualquer nó acima do modelo importado:
+
+```gdscript
+extends Node3D
+
+func _ready() -> void:
+	for roda in find_children("*", "VehicleWheel3D", true, false):
+		var dados: Dictionary = roda.get_meta("extras", {})
+		roda.wheel_radius = dados.get("raio", roda.wheel_radius)
+		roda.use_as_steering = dados.get("direcao", false)
+		roda.use_as_traction = dados.get("tracao", false)
+```
+
+Depois ajuste no Godot a massa (`mass`), a suspensão das rodas e a força do motor (`engine_force`)
+para o seu jogo. Para puxar uma carreta, ligue os dois veículos com uma junta no ponto `engate`.
+Exporte um veículo por arquivo: com vários no mesmo arquivo, o Godot põe um número no fim dos nomes
+repetidos.
+
+As rodas das motos ainda fazem parte do modelo e não giram sozinhas.
 
 ## Agente de IA
 
@@ -109,7 +171,10 @@ substituem um arquivo.
 | `capture_view` | Devolve imagens do modelo, de vários ângulos |
 | `frame_view` | Enquadra o modelo na sua tela |
 | `undo`, `redo` | Desfaz e refaz |
-| `export_glb` | Exporta um arquivo GLB |
+| `list_animations` | Lista as animações prontas e os personagens da cena |
+| `set_animations` | Escolhe as animações que um personagem leva no arquivo |
+| `preview_animation` | Mostra um personagem num momento de uma animação, para conferir com `capture_view` |
+| `export_glb` | Exporta um arquivo GLB, com veículos prontos para jogo e personagens animados |
 
 ## Geradores
 
@@ -187,6 +252,17 @@ pnpm test
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
+No GitHub, os mesmos testes rodam a cada envio para o `main`. Para lançar uma versão, atualize o
+número em `src-tauri/tauri.conf.json` e envie uma tag com ele:
+
+```powershell
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+O GitHub gera o instalador do Windows e o deixa num rascunho de versão, que só fica público quando
+você o publica.
+
 ## Como o projeto é organizado
 
 A interface e o viewport 3D são feitos em TypeScript com React e Three.js. O Rust guarda o
@@ -201,6 +277,9 @@ projeto e aplica todas as alterações.
 | `tools/blender/` | Scripts do Blender que modelam os veículos de todos os estilos e geram `public/models/vehicles.bin` |
 | `src/blocks/definitions/styleize.ts` | Converte um modelo de um estilo para os outros |
 | `src/modeling/` | Malha editável, formas básicas e operações de modelagem |
+| `src/animation/` | Esqueleto dos personagens, leitura das animações e prévia |
+| `src/export/` | Exportação GLB, veículos prontos para jogo e personagens com esqueleto |
+| `public/animations/` | Pacote de animações, gerado por `scripts/import-animations.ts` |
 | `src/viewport/` | Cena 3D e cálculo de encaixe |
 | `src/ui/` | Painéis e atalhos |
 | `src/mcp/` | Ferramentas do agente de IA |
@@ -228,7 +307,8 @@ a cor escolhida pela pessoa, e partes com `color` mantêm a própria cor, como v
 3. **Agente de IA:** feito, com servidor MCP local e captura do viewport
 4. **Modelagem livre:** feita, com faces, arestas, pontos, furos, chanfros e escultura, pela
    interface e pelo agente
-5. **Animação:** esqueleto criado a partir dos encaixes e biblioteca de animações prontas
+5. **Animação:** feita, com esqueleto criado a partir dos encaixes, 162 animações prontas, prévia
+   e exportação com esqueleto
 6. **Linha do tempo:** ajuste simples de poses e novas animações próprias do editor
 
 ## Adicionar modelos à biblioteca
@@ -260,6 +340,16 @@ O primeiro comando grava `public/models/vehicles.bin` e `src/blocks/definitions/
 O código é distribuído sob a [licença MIT](LICENSE), e os recursos de terceiros estão em
 [CREDITS.md](CREDITS.md).
 
-A biblioteca de animações planejada vem do
-[Mesh2Motion](https://github.com/Mesh2Motion/mesh2motion-app), cujos modelos, rigs e animações
-são CC0. Ela será creditada aqui quando entrar no projeto.
+As animações vêm do [Mesh2Motion](https://github.com/Mesh2Motion/mesh2motion-app), cujos modelos,
+rigs e animações são CC0.
+
+## Atualizar as animações
+
+As animações ficam em `public/animations/human.bin`, com os nomes em português em
+`src/animation/library.generated.ts`. Para gerar de novo a partir dos arquivos do Mesh2Motion:
+
+```powershell
+node scripts/import-animations.ts <pasta com human-base-animations.glb e human-addon-animations.glb>
+```
+
+Um clipe novo precisa de um nome em português na tabela `NAMES` do script.

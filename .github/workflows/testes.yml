@@ -1,0 +1,40 @@
+# Roda os testes da interface e do núcleo em Rust a cada envio para o main e em cada pull request.
+name: Testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  testes:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Conferir os tipos
+        run: pnpm exec tsc --noEmit
+
+      - name: Testes da interface
+        run: pnpm test
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Testes do núcleo
+        run: cargo test --manifest-path src-tauri/Cargo.toml

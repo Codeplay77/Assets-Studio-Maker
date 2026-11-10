@@ -3,7 +3,11 @@ import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { mergeGeometries, mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 import { getBlock, type BlockDef } from "../blocks/catalog";
 import { buildGeometry, createBlockMaterials, disposeBlockMaterials } from "../blocks/geometry";
-import type { Part } from "../core/types";
+import { bakeClip, buildSkeleton } from "../animation/bake";
+import { ClipSampler, clipFileName, getClip, hasAnimationPack, loadAnimationPack, type ClipInfo } from "../animation/clips";
+import { findRigs, type Rig } from "../animation/rig";
+import type { Part, PartId } from "../core/types";
+import { bodyExtras, findVehicles, partMatrix, wheelExtras, type VehicleBody } from "./vehicles";
 
 export interface ExportOptions {
   /** One mesh per material instead of one node per part: fewer draw calls in a game. */
@@ -11,6 +15,18 @@ export interface ExportOptions {
   /** Puts the model's base at the origin, which is where engines expect the pivot. */
   center: boolean;
   name: string;
+  /** Gives each vehicle a node of its own and each wheel a node centered on its axle. */
+  vehicles?: boolean;
+  /**
+   * Names the vehicles so Godot 4 imports them as a VehicleBody3D with VehicleWheel3D wheels and a
+   * box collision shape, and marks the animations that repeat so Godot loops them.
+   */
+  godot?: boolean;
+  /**
+   * The animations each character carries, under the id of its hips part (the project's
+   * `animations`). A character with animations is exported with a skeleton and its clips.
+   */
+  animations?: Record<string, string[]>;
 }
 
 const triangleCounts = new WeakMap<BlockDef, number>();
@@ -36,31 +52,6 @@ export function countTriangles(parts: Part[]): number {
   return parts.reduce((total, part) => total + blockTriangles(part.block), 0);
 }
 
-function partMatrix(part: Part): THREE.Matrix4 {
-  return new THREE.Matrix4().compose(
-    new THREE.Vector3(...part.position),
-    new THREE.Quaternion(...part.rotation),
-    new THREE.Vector3(...part.scale),
-  );
-}
-
-class GeometryCache {
-  private readonly built = new Map<string, THREE.BufferGeometry>();
-
-  get(block: string): THREE.BufferGeometry {
-    let geometry = this.built.get(block);
-    if (!geometry) {
-      geometry = buildGeometry(getBlock(block).shape);
-      this.built.set(block, geometry);
-    }
-    return geometry;
-  }
-
-  dispose(): void {
-    for (const geometry of this.built.values()) geometry.dispose();
-  }
-}
-
 /** Named in the slot order of BLOCK_FINISHES. */
 const FINISH_NAMES = ["fosco", "brilhante", "metal", "vidro", "luz", "pintura", "vidro_fume"];
 
@@ -74,87 +65,290 @@ function slice(geometry: THREE.BufferGeometry, start: number, count: number): TH
   return result;
 }
 
-/** Collapses everything into one mesh per finish, with each part's color baked in. */
-function mergeParts(parts: Part[], geometries: GeometryCache, root: THREE.Group): void {
-  const byFinish = new Map<number, THREE.BufferGeometry[]>();
-  const tint = new THREE.Color();
+/**
+ * Turns parts into meshes. Geometry and materials are shared across everything it adds, so a car
+ * body and its four wheels use the same materials in the file.
+ */
+class SceneBuilder {
+  private readonly built = new Map<string, THREE.BufferGeometry>();
+  private readonly welded = new Map<string, THREE.BufferGeometry>();
+  private readonly materialsByColor = new Map<string, THREE.Material[]>();
+  private white?: THREE.Material[];
 
-  for (const part of parts) {
-    const geometry = geometries.get(part.block);
-    const matrix = partMatrix(part);
-    tint.set(part.color);
+  constructor(private readonly merge: boolean) {}
 
-    for (const { start, count, materialIndex = 0 } of geometry.groups) {
-      const piece = slice(geometry, start, count);
-      piece.applyMatrix4(matrix);
-      if (materialIndex % 2 === 0) {
-        const colors = piece.getAttribute("color");
-        for (let i = 0; i < colors.count; i++) {
-          colors.setXYZ(i, colors.getX(i) * tint.r, colors.getY(i) * tint.g, colors.getZ(i) * tint.b);
-        }
-      }
-      const finish = Math.floor(materialIndex / 2);
-      byFinish.set(finish, [...(byFinish.get(finish) ?? []), piece]);
+  private geometry(block: string): THREE.BufferGeometry {
+    let geometry = this.built.get(block);
+    if (!geometry) {
+      geometry = buildGeometry(getBlock(block).shape);
+      this.built.set(block, geometry);
     }
+    return geometry;
   }
 
-  // Slots are finish * 2, so white tinted materials give every finish directly.
-  const materials = createBlockMaterials(0xffffff);
-  for (const [finish, pieces] of byFinish) {
+  /**
+   * Adds the parts under `parent`. `toParent` takes the scene into the parent's space. `prefix`
+   * names merged meshes, and `groups` keeps the editor's groups as nodes.
+   */
+  add(parts: Part[], parent: THREE.Object3D, toParent: THREE.Matrix4, prefix: string, groups: boolean): void {
+    if (parts.length === 0) return;
+    if (this.merge) this.addMerged(parts, parent, toParent, prefix);
+    else this.addSeparate(parts, parent, toParent, groups);
+  }
+
+  /**
+   * The parts cut into pieces by finish, with each part's color baked in. With `bones`, each
+   * piece's vertices are bound to the bone of its part.
+   */
+  private piecesByFinish(parts: Part[], toParent: THREE.Matrix4, bones?: Map<PartId, number>): Map<number, THREE.BufferGeometry[]> {
+    const byFinish = new Map<number, THREE.BufferGeometry[]>();
+    const tint = new THREE.Color();
+
+    for (const part of parts) {
+      const geometry = this.geometry(part.block);
+      const matrix = toParent.clone().multiply(partMatrix(part));
+      tint.set(part.color);
+
+      for (const { start, count, materialIndex = 0 } of geometry.groups) {
+        const piece = slice(geometry, start, count);
+        piece.applyMatrix4(matrix);
+        if (materialIndex % 2 === 0) {
+          const colors = piece.getAttribute("color");
+          for (let i = 0; i < colors.count; i++) {
+            colors.setXYZ(i, colors.getX(i) * tint.r, colors.getY(i) * tint.g, colors.getZ(i) * tint.b);
+          }
+        }
+        if (bones) {
+          const indices = new Uint16Array(count * 4);
+          const weights = new Float32Array(count * 4);
+          const bone = bones.get(part.id) ?? 0;
+          for (let i = 0; i < count; i++) {
+            indices[i * 4] = bone;
+            weights[i * 4] = 1;
+          }
+          piece.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(indices, 4));
+          piece.setAttribute("skinWeight", new THREE.Float32BufferAttribute(weights, 4));
+        }
+        const finish = Math.floor(materialIndex / 2);
+        byFinish.set(finish, [...(byFinish.get(finish) ?? []), piece]);
+      }
+    }
+    return byFinish;
+  }
+
+  /** Slots are finish * 2, so white tinted materials give every finish directly. */
+  private whiteMaterial(finish: number): THREE.Material {
+    if (!this.white) {
+      this.white = createBlockMaterials(0xffffff);
+      FINISH_NAMES.forEach((name, index) => {
+        // Glow is only unlit in its fixed slot; the tinted slot of the others is what we want.
+        this.white![index === 4 ? 9 : index * 2].name = name;
+      });
+    }
+    return this.white[finish === 4 ? 9 : finish * 2];
+  }
+
+  private static join(pieces: THREE.BufferGeometry[]): THREE.BufferGeometry {
     const merged = mergeGeometries(pieces);
     if (!merged) throw new Error("Falha ao juntar as peças");
     const welded = mergeVertices(merged);
     merged.dispose();
     for (const piece of pieces) piece.dispose();
+    return welded;
+  }
 
-    // Glow is only unlit in its fixed slot; the tinted slot of the others is what we want.
-    const material = finish === 4 ? materials[9] : materials[finish * 2];
-    material.name = FINISH_NAMES[finish];
-    const mesh = new THREE.Mesh(welded, material);
-    mesh.name = `malha_${FINISH_NAMES[finish]}`;
-    root.add(mesh);
+  /** Collapses the parts into one mesh per finish. */
+  private addMerged(parts: Part[], parent: THREE.Object3D, toParent: THREE.Matrix4, prefix: string): void {
+    for (const [finish, pieces] of this.piecesByFinish(parts, toParent)) {
+      const mesh = new THREE.Mesh(SceneBuilder.join(pieces), this.whiteMaterial(finish));
+      mesh.name = `${prefix}_${FINISH_NAMES[finish]}`;
+      parent.add(mesh);
+    }
+  }
+
+  /**
+   * One skinned mesh for a whole character, a material per finish. Every vertex follows only the
+   * bone of its part, so the blocks stay rigid.
+   */
+  addSkinned(parts: Part[], bones: Map<PartId, number>, parent: THREE.Object3D, toParent: THREE.Matrix4, name: string): THREE.SkinnedMesh {
+    const byFinish = [...this.piecesByFinish(parts, toParent, bones)].sort(([a], [b]) => a - b);
+    const geometries = byFinish.map(([, pieces]) => SceneBuilder.join(pieces));
+    const geometry = mergeGeometries(geometries, true);
+    if (!geometry) throw new Error("Falha ao juntar as peças do personagem");
+    for (const part of geometries) part.dispose();
+    const mesh = new THREE.SkinnedMesh(geometry, byFinish.map(([finish]) => this.whiteMaterial(finish)));
+    mesh.name = name;
+    parent.add(mesh);
+    return mesh;
+  }
+
+  private addSeparate(parts: Part[], parent: THREE.Object3D, toParent: THREE.Matrix4, useGroups: boolean): void {
+    const groups = new Map<number, THREE.Group>();
+
+    for (const part of parts) {
+      let geometry = this.welded.get(part.block);
+      if (!geometry) {
+        geometry = mergeVertices(this.geometry(part.block));
+        this.welded.set(part.block, geometry);
+      }
+
+      let materials = this.materialsByColor.get(part.color);
+      if (!materials) {
+        materials = createBlockMaterials(part.color);
+        materials.forEach((material, slot) => {
+          const finish = FINISH_NAMES[Math.floor(slot / 2)];
+          material.name = slot % 2 === 0 ? `${finish}_${part.color.slice(1)}` : `${finish}_fixo`;
+        });
+        this.materialsByColor.set(part.color, materials);
+      }
+
+      const mesh = new THREE.Mesh(geometry, materials);
+      mesh.name = `${getBlock(part.block).name} ${part.id}`;
+      mesh.applyMatrix4(toParent.clone().multiply(partMatrix(part)));
+
+      let target = parent;
+      if (useGroups && part.group !== undefined) {
+        let group = groups.get(part.group);
+        if (!group) {
+          group = new THREE.Group();
+          group.name = `Grupo ${part.group}`;
+          groups.set(part.group, group);
+          parent.add(group);
+        }
+        target = group;
+      }
+      target.add(mesh);
+    }
+  }
+
+  dispose(): void {
+    for (const geometry of this.built.values()) geometry.dispose();
   }
 }
 
-function addSeparateParts(parts: Part[], geometries: GeometryCache, root: THREE.Group): void {
-  const welded = new Map<string, THREE.BufferGeometry>();
-  const materialsByColor = new Map<string, THREE.Material[]>();
-  const groups = new Map<number, THREE.Group>();
+/** Physics written with the OMI glTF extensions, which Godot 4 reads on import. */
+interface Physics {
+  bodies: Map<THREE.Object3D, Record<string, unknown>>;
+  shapes: Record<string, unknown>[];
+}
 
-  for (const part of parts) {
-    let geometry = welded.get(part.block);
-    if (!geometry) {
-      geometry = mergeVertices(geometries.get(part.block));
-      welded.set(part.block, geometry);
+const physicsOf = new WeakMap<THREE.Scene, Physics>();
+
+function setFrom(object: THREE.Object3D, matrix: THREE.Matrix4): void {
+  matrix.decompose(object.position, object.quaternion, object.scale);
+}
+
+/**
+ * A box that fits the body in its own frame. Its width comes from the lower part only: mirrors
+ * stick out above it (on a truck cab they hang at 1.9 m), and a box as wide as the mirrors would
+ * hit walls the body clears.
+ */
+function collisionBox(shell: THREE.Object3D): THREE.Box3 {
+  const point = new THREE.Vector3();
+  const points = (visit: (p: THREE.Vector3) => void) => {
+    for (const child of shell.children) {
+      if (!(child instanceof THREE.Mesh)) continue;
+      child.updateMatrix();
+      const position = child.geometry.getAttribute("position");
+      for (let i = 0; i < position.count; i++) visit(point.fromBufferAttribute(position, i).applyMatrix4(child.matrix));
     }
-
-    let materials = materialsByColor.get(part.color);
-    if (!materials) {
-      materials = createBlockMaterials(part.color);
-      materials.forEach((material, slot) => {
-        const finish = FINISH_NAMES[Math.floor(slot / 2)];
-        material.name = slot % 2 === 0 ? `${finish}_${part.color.slice(1)}` : `${finish}_fixo`;
-      });
-      materialsByColor.set(part.color, materials);
-    }
-
-    const mesh = new THREE.Mesh(geometry, materials);
-    mesh.name = `${getBlock(part.block).name} ${part.id}`;
-    mesh.applyMatrix4(partMatrix(part));
-
-    let parent = root;
-    if (part.group !== undefined) {
-      let group = groups.get(part.group);
-      if (!group) {
-        group = new THREE.Group();
-        group.name = `Grupo ${part.group}`;
-        groups.set(part.group, group);
-        root.add(group);
-      }
-      parent = group;
-    }
-    parent.add(mesh);
+  };
+  const box = new THREE.Box3();
+  points((p) => box.expandByPoint(p));
+  if (box.isEmpty()) return box;
+  const below = box.min.y + (box.max.y - box.min.y) * 0.45;
+  let left = -Infinity;
+  let right = Infinity;
+  points((p) => {
+    if (p.y > below) return;
+    left = Math.max(left, p.x);
+    right = Math.min(right, p.x);
+  });
+  if (left > right) {
+    box.max.x = left;
+    box.min.x = right;
   }
+  return box;
+}
+
+function addVehicle(body: VehicleBody, builder: SceneBuilder, parent: THREE.Object3D, toScene: THREE.Matrix4, options: ExportOptions, physics: Physics): void {
+  const node = new THREE.Group();
+  node.name = body.name;
+  setFrom(node, toScene.clone().multiply(body.frame));
+  parent.add(node);
+
+  // Godot makes every name in the file unique, so the trailer's nodes get names of their own
+  // instead of a number at the end.
+  const suffix = body.trailer ? "_carreta" : "";
+  const toBody = body.frame.clone().invert();
+  const shell = new THREE.Group();
+  shell.name = `carroceria${suffix}`;
+  node.add(shell);
+  builder.add(body.parts, shell, toBody, shell.name, false);
+  const box = collisionBox(shell);
+  node.userData = bodyExtras(body, box);
+
+  for (const wheel of body.wheels) {
+    const holder = new THREE.Group();
+    // Godot turns a node named `-wheel` into a VehicleWheel3D, which spins around its X axis.
+    holder.name = options.godot ? `${wheel.name}-wheel` : wheel.name;
+    holder.position.copy(wheel.center);
+    holder.userData = wheelExtras(wheel);
+    node.add(holder);
+    builder.add(wheel.parts, holder, new THREE.Matrix4().makeTranslation(wheel.center.clone().negate()).multiply(toBody), wheel.name, false);
+  }
+
+  if (options.godot && !box.isEmpty()) {
+    // The original OMI body type "vehicle" is what makes Godot build a VehicleBody3D; a collider
+    // inside it becomes its CollisionShape3D. Tested with Godot 4.7.
+    physics.bodies.set(node, { type: "vehicle" });
+    const collider = new THREE.Object3D();
+    collider.name = `colisao${suffix}`;
+    box.getCenter(collider.position);
+    node.add(collider);
+    physics.bodies.set(collider, { collider: { shape: physics.shapes.length } });
+    physics.shapes.push({ type: "box", box: { size: box.getSize(new THREE.Vector3()).toArray() } });
+  }
+}
+
+/** The characters that carry animations, and the parts that are not theirs. */
+function findAnimated(parts: Part[], animations: Record<string, string[]> | undefined): { rigs: { rig: Rig; clips: ClipInfo[] }[]; rest: Part[] } {
+  if (!animations || Object.keys(animations).length === 0) return { rigs: [], rest: parts };
+  const rigs = findRigs(parts)
+    .map((rig) => ({ rig, clips: (animations[String(rig.root)] ?? []).flatMap((id) => getClip(id) ?? []) }))
+    .filter(({ clips }) => clips.length > 0);
+  const taken = new Set(rigs.flatMap(({ rig }) => rig.parts.map((part) => part.id)));
+  return { rigs, rest: parts.filter((part) => !taken.has(part.id)) };
+}
+
+/** Where a character stands: on the ground under its hips, facing +Z. */
+const characterFrame = (rig: Rig) => rig.frame.clone().multiply(new THREE.Matrix4().makeTranslation(0, rig.ground, 0));
+
+/** A character as one skinned mesh with its skeleton, and its clips baked on that skeleton. */
+function addCharacter(
+  rig: Rig,
+  clips: ClipInfo[],
+  parts: Map<PartId, Part>,
+  builder: SceneBuilder,
+  parent: THREE.Object3D,
+  toScene: THREE.Matrix4,
+  names: { node: string; mesh: string; clipPrefix: string },
+  godot: boolean,
+): THREE.AnimationClip[] {
+  const node = new THREE.Group();
+  node.name = names.node;
+  const frame = characterFrame(rig);
+  setFrom(node, toScene.clone().multiply(frame));
+  parent.add(node);
+
+  const bones = buildSkeleton(rig);
+  node.add(bones[0]);
+  const owners = new Map(rig.parts.map((part) => [part.id, part.bone]));
+  const mesh = builder.addSkinned(rig.parts.map((part) => parts.get(part.id)!), owners, node, frame.clone().invert(), names.mesh);
+  node.updateMatrixWorld(true);
+  mesh.bind(new THREE.Skeleton(bones));
+  // Godot loops an animation whose name ends in -loop.
+  return clips.map((clip) => bakeClip(rig, new ClipSampler(clip), bones, `${names.clipPrefix}${clipFileName(clip)}${godot && clip.loop ? "-loop" : ""}`));
 }
 
 /** Builds the scene to export. Kept apart from the file writing so it can be tested. */
@@ -164,12 +358,31 @@ export function buildExportScene(parts: Part[], options: ExportOptions): THREE.S
   root.name = options.name;
   scene.add(root);
 
-  const geometries = new GeometryCache();
-  if (options.merge) mergeParts(parts, geometries, root);
-  else addSeparateParts(parts, geometries, root);
-  geometries.dispose();
+  const { bodies, rest: afterVehicles } = options.vehicles ? findVehicles(parts) : { bodies: [], rest: parts };
+  const { rigs, rest } = findAnimated(afterVehicles, options.animations);
+  if (rigs.length > 0 && !hasAnimationPack()) throw new Error("As animações ainda não foram carregadas");
+  // A vehicle or a character exported alone goes in its own frame: at the origin and facing +Z,
+  // whatever its place in the scene, because that is how a game spawns it.
+  const drivers = bodies.filter((body) => !body.trailer);
+  const alone = options.center && rest.length === 0 && drivers.length + rigs.length === 1;
+  const subject = drivers[0]?.frame ?? (rigs[0] && characterFrame(rigs[0].rig));
+  const own = alone && subject !== undefined;
+  const toScene = own ? subject.clone().invert() : new THREE.Matrix4();
 
-  if (options.center && parts.length > 0) {
+  const builder = new SceneBuilder(options.merge);
+  const physics: Physics = { bodies: new Map(), shapes: [] };
+  builder.add(rest, root, toScene, "malha", true);
+  for (const body of bodies) addVehicle(body, builder, root, toScene, options, physics);
+  const byId = new Map(parts.map((part) => [part.id, part]));
+  rigs.forEach(({ rig, clips }, index) => {
+    const number = rigs.length > 1 ? ` ${index + 1}` : "";
+    const names = { node: `Personagem${number}`, mesh: `corpo${number.replace(" ", "_")}`, clipPrefix: rigs.length > 1 ? `personagem${index + 1}_` : "" };
+    scene.animations.push(...addCharacter(rig, clips, byId, builder, root, toScene, names, options.godot ?? false));
+  });
+  builder.dispose();
+  if (physics.shapes.length > 0) physicsOf.set(scene, physics);
+
+  if (options.center && !own && parts.length > 0) {
     root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(root);
     const center = box.getCenter(new THREE.Vector3());
@@ -211,16 +424,44 @@ export function addVertexColorHint(scene: THREE.Scene): void {
   scene.add(hint);
 }
 
+interface ExporterWriter {
+  json: Record<string, unknown> & { extensions?: Record<string, unknown> };
+  extensionsUsed: Record<string, boolean>;
+}
+
+/** Writes the physics of a scene into the file, with the OMI_physics_body and OMI_physics_shape extensions. */
+function physicsPlugin(physics: Physics) {
+  return (writer: ExporterWriter) => ({
+    writeNode(object: THREE.Object3D, nodeDef: Record<string, unknown> & { extensions?: Record<string, unknown> }) {
+      const body = physics.bodies.get(object);
+      if (!body) return;
+      nodeDef.extensions = { ...nodeDef.extensions, OMI_physics_body: body };
+      writer.extensionsUsed.OMI_physics_body = true;
+    },
+    afterParse() {
+      writer.json.extensions = { ...writer.json.extensions, OMI_physics_shape: { shapes: physics.shapes } };
+      writer.extensionsUsed.OMI_physics_shape = true;
+    },
+  });
+}
+
 export async function exportGlb(parts: Part[], options: ExportOptions): Promise<ArrayBuffer> {
+  if (options.animations && Object.values(options.animations).some((clips) => clips.length > 0)) await loadAnimationPack();
   const scene = buildExportScene(parts, options);
   addVertexColorHint(scene);
-  const result = await new GLTFExporter().parseAsync(scene, { binary: true });
+  const exporter = new GLTFExporter();
+  const physics = physicsOf.get(scene);
+  // three's types describe plugins loosely; the writer hands us its json and extension list.
+  if (physics) exporter.register(physicsPlugin(physics) as unknown as Parameters<GLTFExporter["register"]>[0]);
+  const result = await exporter.parseAsync(scene, { binary: true, animations: scene.animations });
 
+  const materials = new Set<THREE.Material>();
   scene.traverse((object) => {
     if (object instanceof THREE.Mesh) {
       object.geometry.dispose();
-      disposeBlockMaterials(Array.isArray(object.material) ? object.material : [object.material]);
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) materials.add(material);
     }
   });
+  disposeBlockMaterials([...materials]);
   return result as ArrayBuffer;
 }

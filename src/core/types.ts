@@ -59,6 +59,8 @@ export interface Project {
   nextGroup: number;
   shapes: CustomShape[];
   nextShape: number;
+  /** The animations each character carries into an export, under the id of its hips part. */
+  animations?: Record<string, string[]>;
 }
 
 export interface EditorSnapshot {
@@ -131,4 +133,6 @@ export type Command =
       removeParts?: PartId[];
     }
   | { type: "updateShape"; shape: CustomShape }
-  | { type: "removeShape"; id: string };
+  | { type: "removeShape"; id: string }
+  /** `part` is the character's hips; an empty list takes its animations away. */
+  | { type: "setAnimations"; part: PartId; clips: string[] };
