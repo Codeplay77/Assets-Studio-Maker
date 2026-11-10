@@ -45,7 +45,7 @@ const HOVER_EMISSIVE = 0x06281f;
 const MIN_UPWARD_NORMAL = 0.7;
 /** The panel on the left covers the canvas, so the view is centered on what remains. */
 const LEFT_DOCK_PX = 344;
-const HORIZON = 0x161b27;
+const HORIZON = 0x151e24;
 const FOCUS_MARGIN = 1.3;
 const FOCUS_MARGIN_MODELING = 2.1;
 const CAPTURE_FOV = 30;
@@ -72,10 +72,10 @@ function createBackdrop(): THREE.CanvasTexture {
   canvas.height = 512;
   const context = canvas.getContext("2d")!;
   const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, "#222b40");
-  gradient.addColorStop(0.42, "#191f2e");
-  gradient.addColorStop(0.62, "#141925");
-  gradient.addColorStop(1, "#0c0f17");
+  gradient.addColorStop(0, "#1b2c32");
+  gradient.addColorStop(0.42, "#18242b");
+  gradient.addColorStop(0.62, "#141d24");
+  gradient.addColorStop(1, "#0d1319");
   context.fillStyle = gradient;
   context.fillRect(0, 0, canvas.width, canvas.height);
   const texture = new THREE.CanvasTexture(canvas);

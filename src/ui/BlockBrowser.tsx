@@ -71,6 +71,7 @@ export function BlockBrowser({ group }: { group: BlockCategory["group"] }) {
       <div className="search">
         <Search size={15} />
         <input
+          aria-label="Buscar modelos e peças"
           placeholder={`Buscar em ${styledBlocks.length} itens…`}
           value={search}
           onChange={(event) => setSearch(event.target.value)}

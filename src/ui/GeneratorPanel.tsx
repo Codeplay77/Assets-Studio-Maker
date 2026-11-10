@@ -35,7 +35,8 @@ export function GeneratorPanel() {
   return (
     <div className="dock-body">
       <div className="section-head">
-        <h2>Estilo dos modelos</h2>
+        <span className="section-step">01 / DIREÇÃO DE ARTE</span>
+        <h2>Escolha seu estilo</h2>
         <p>{ART_STYLES.find(({ id }) => id === active)?.hint}. Tudo o que você gerar segue este estilo.</p>
       </div>
 
@@ -63,17 +64,19 @@ export function GeneratorPanel() {
       )}
 
       <div className="section-head">
-        <h2>O que você quer criar?</h2>
+        <span className="section-step">02 / HORA DE CRIAR</span>
+        <h2>O que vamos construir?</h2>
         <p>Escolha um tipo e ajuste as opções no painel da direita.</p>
       </div>
 
-      <div className="generator-grid">
+      <div className="generator-grid asset-generators">
         {generators.map(({ id, name }) => {
           const { icon: Icon, hint, hue } = GENERATOR_LOOKS[id];
           return (
             <button
               key={id}
               className={`generator-card ${open === id ? "selected" : ""}`}
+              aria-pressed={open === id}
               style={{ "--hue": hue } as React.CSSProperties}
               onClick={() => openGenerator(id)}
             >

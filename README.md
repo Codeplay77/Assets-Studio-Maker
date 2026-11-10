@@ -1,5 +1,10 @@
 # Assets Studio Maker
 
+<p align="center"><img src="public/brand/asset-studio-symbol-256.png" width="112" alt="Símbolo do Assets Studio Maker: três blocos conectados em menta, azul e lilás" /></p>
+<p align="center"><strong>Pequenos blocos. Grandes ideias.</strong><br />Um estúdio gratuito e open source para o seu próximo jogo.</p>
+
+Logo, paleta e orientações de uso estão no [guia de identidade visual](BRAND.md).
+
 Editor de assets 3D para quem está começando a criar jogos: a liberdade de um programa de
 modelagem, com ferramentas que dá para entender no primeiro uso. Você pode encaixar blocos prontos,
 sortear modelos, moldar formas novas ou pedir para um agente de IA modelar por você. O projeto é só

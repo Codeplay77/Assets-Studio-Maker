@@ -22,6 +22,7 @@ import {
 import { useEditor } from "../core/store";
 import type { Tool } from "../core/types";
 import { newProject, openProject, saveProject } from "./actions";
+import { Brand } from "./Brand";
 
 const TOOLS: { id: Tool; label: string; key: string; icon: LucideIcon }[] = [
   { id: "translate", label: "Mover", key: "W", icon: Move3d },
@@ -76,7 +77,8 @@ export function TitleBar() {
   return (
     <header className="titlebar" data-tauri-drag-region>
       <div className="titlebar-left" data-tauri-drag-region>
-        <span className="brand-mark" aria-hidden />
+        <Brand />
+        <i className="divider brand-divider" />
         <div className="file-actions">
           <button className="tool square" onClick={newProject} title="Novo (Ctrl+N)" aria-label="Novo projeto">
             <FilePlus2 size={16} strokeWidth={1.9} />
@@ -94,16 +96,18 @@ export function TitleBar() {
         </span>
       </div>
 
-      <div className="toolbar glass">
+      <div className="toolbar glass" role="group" aria-label="Ferramentas da cena">
         {TOOLS.map(({ id, label, key, icon: Icon }) => (
           <button
             key={id}
             className={`tool ${tool === id ? "active" : ""}`}
             onClick={() => setTool(id)}
             title={`${label} (${key})`}
+            aria-label={label}
+            aria-pressed={tool === id}
           >
             <Icon size={17} strokeWidth={1.9} />
-            <span>{label}</span>
+            <span>{label}</span><kbd>{key}</kbd>
           </button>
         ))}
         <i className="divider" />
@@ -129,6 +133,7 @@ export function TitleBar() {
       </div>
 
       <div className="titlebar-right" data-tauri-drag-region>
+        <span className="community-badge">Gratuito e open source</span>
         <button
           className={`tool square agent-button ${agentRunning ? "on" : ""}`}
           onClick={() => setAgentOpen(true)}
