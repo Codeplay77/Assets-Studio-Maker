@@ -119,9 +119,9 @@ um boneco de blocos nunca aparece ao lado de um carro realista.
 | Estilo | Como é |
 | --- | --- |
 | **Low poly** | Polígonos à vista, leve e colorido. Usa os modelos CC0 e o personagem low poly |
-| **Realista** | Formas suaves e mais detalhe. Usa as peças próprias do editor |
+| **Realista** | Proporções reais, pintura com verniz, vidro fumê com o interior à vista, freios atrás dos raios e rodado duplo em caminhões, carretas e ônibus |
 | **Blocos** | Tudo feito de cubos, inclusive pessoas, carros, cidades e mapas |
-| **Arcade** | Pintura brilhante, cromados e rodas grandes, no visual do jogo Codeplay in Kart |
+| **Arcade** | Veículos de brinquedo: mais curtos, redondos e de rodas grandes, com pintura brilhante, no visual do jogo Codeplay in Kart |
 
 Os karts, carros, caminhões, ônibus, carretas, motos, casas e prédios do Arcade têm pintura em
 três áreas (principal, secundária e detalhes), além da cor dos aros. Em **Veículo**, o tipo **Kart**

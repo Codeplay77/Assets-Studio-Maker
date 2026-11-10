@@ -522,7 +522,7 @@ const SURFACES: Record<BlockFinish, THREE.MeshPhysicalMaterialParameters> = {
   // Car paint: a soft base under a clear coat that keeps a sharp reflection.
   paint: { roughness: 0.4, metalness: 0.18, clearcoat: 1, clearcoatRoughness: 0.04 },
   // Tinted glass: the cabin shows through, darkened, and the glass still reflects.
-  tint: { roughness: 0.02, metalness: 0.1, transparent: true, opacity: 0.62, depthWrite: false, envMapIntensity: 2.2 },
+  tint: { roughness: 0.05, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.55, depthWrite: false, envMapIntensity: 2.4 },
 };
 
 /** Finishes that need the physical material, which costs more to draw. */

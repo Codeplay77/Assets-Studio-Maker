@@ -121,7 +121,7 @@ function buildModel(asm: Assembler, rng: Rng, options: VehicleOptions, kind: str
   const accent = service?.accent ?? chosen(options.accent) ?? (real && !racing ? pickReal(rng.fork("accent"), REAL_PAINTS, paint) : differentColor(rng.fork("accent"), paint));
   const rim = chosen(options.rim) ?? rng.fork("rim").pick(real ? REAL_RIMS : ["#9aa0a8", "#f4f4f4", "#d4af37", "#3a3f47"]);
   // Arcade tires always wear the colored band, like the karts of the game.
-  const colors = { paint, trim, accent: racing || options.style === "arcade" ? accent : "#2a2c31", rim };
+  const colors = { paint, trim, accent: (racing && !real) || options.style === "arcade" ? accent : "#2a2c31", rim };
   const wheel = chosen(options.wheels) ?? spec.wheel ?? rng.fork("wheels").pick(BAKED_WHEEL_IDS);
   // The Arcade models are shorter and have bigger wheels; only the Realista ones have dual tires.
   const arcade = options.style === "arcade";

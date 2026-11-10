@@ -4,9 +4,9 @@ export type { ArtStyle };
 
 export const ART_STYLES: { id: ArtStyle; name: string; hint: string }[] = [
   { id: "lowpoly", name: "Low poly", hint: "Polígonos à vista, leve e colorido" },
-  { id: "realistic", name: "Realista", hint: "Formas suaves e mais detalhe" },
+  { id: "realistic", name: "Realista", hint: "Proporções reais, pintura com verniz e o interior visível pelos vidros" },
   { id: "blocks", name: "Blocos", hint: "Tudo feito de cubos" },
-  { id: "arcade", name: "Arcade", hint: "Pintura brilhante, cromados e rodas grandes, como no Codeplay in Kart" },
+  { id: "arcade", name: "Arcade", hint: "Brinquedos: curtos, redondos e de rodas grandes, como no Codeplay in Kart" },
 ];
 
 /** Blocks made for one style start with its prefix; the catalog's older blocks have none. */

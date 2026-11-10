@@ -7,7 +7,7 @@ import { generateModel, generators, getGenerator, runGenerator, settingsForStyle
 import { Rng } from "./rng";
 import { readFileSync } from "node:fs";
 import { BAKED_ASSETS } from "../blocks/definitions/family/baked.generated.ts";
-import { BAKED_SPECS, bakedModels, KART_IDS, WHEEL_RADIUS } from "../blocks/definitions/family/baked.ts";
+import { BAKED_SPECS, bakedModels, KART_IDS, WHEEL_RADIUS, type Axle } from "../blocks/definitions/family/baked.ts";
 import { STYLE_PREFIX } from "../blocks/styles";
 import { decodeBaked, setVehiclePack } from "../blocks/modelPack";
 import { buildVehicle, modelsOf, VEHICLE_KINDS } from "./car";
@@ -68,6 +68,10 @@ describe.each(CASES)("generator %s in the %s style", (id, style) => {
     expect(outcomes.size).toBeGreaterThan(4);
   });
 });
+
+
+/** Two tires on each side of a dual axle, but only in Realista. */
+const tireCount = (axles: Axle[], style: string) => axles.reduce((total, axle) => total + (axle.dual && style === "realistic" ? 4 : 2), 0);
 
 describe("generator settings", () => {
   it("refuses what the generator does not have, and names what it has", () => {
@@ -265,11 +269,11 @@ describe("kart-style family", () => {
   const kindOf = (model: string) => VEHICLE_KINDS.find((kind) => modelsOf(kind).includes(model))!;
 
   it.each(Object.keys(BAKED_SPECS).filter((id) => !["semi", "moto"].includes(BAKED_SPECS[id].group)))("%s has every wheel on the ground, in every style", (model) => {
-    const { axles } = BAKED_SPECS[model];
+    const spec = BAKED_SPECS[model];
     for (const style of STYLES) {
       const parts = build("car", 3, style, { kind: kindOf(model), model, wheels: "slick" });
       const rims = parts.filter((part) => /wheel_slick_rim$/.test(part.block));
-      expect(rims, style).toHaveLength(axles.length * 2);
+      expect(rims, style).toHaveLength(tireCount(style === "arcade" ? spec.arcadeAxles! : spec.axles, style));
       for (const rim of rims) expect(Math.abs(rim.position[1] - WHEEL_RADIUS * rim.scale[0]), `${style} ${model}`).toBeLessThan(0.002);
     }
   });
@@ -294,7 +298,8 @@ describe("kart-style family", () => {
         const spec = BAKED_SPECS[model];
         expect(parts.some((part) => /veh_cavalo(_bicudo)?_base$/.test(part.block)), `${style} ${model}`).toBe(true);
         expect(parts.some((part) => part.block.includes(`veh_${spec.trailer}_base`)), `${style} ${model}`).toBe(true);
-        expect(parts.filter((part) => /wheel_slick_rim$/.test(part.block)), `${style} ${model}`).toHaveLength((spec.axles.length + spec.trailerAxles!.length) * 2);
+        const axles = style === "arcade" ? [...spec.arcadeAxles!, ...spec.arcadeTrailerAxles!] : [...spec.axles, ...spec.trailerAxles!];
+        expect(parts.filter((part) => /wheel_slick_rim$/.test(part.block)), `${style} ${model}`).toHaveLength(tireCount(axles, style));
       }
     }
   });

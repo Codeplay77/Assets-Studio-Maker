@@ -36,7 +36,8 @@ ZONES = {
     "rubber": ("#1b1c1f", None),
     "plastic": ("#25272c", None),
     "seat": ("#23252b", None),
-    "cabin": ("#34363c", None),
+    "cabin": ("#55585f", None),
+    "upholstery": ("#45484f", None),
     "glass": ("#10202c", "gloss"),
     "visor": ("#0b0f16", "glass"),
     "glove": ("#23252b", None),
@@ -574,7 +575,7 @@ def carve_box(size, location, regions, region="CARVE", rotation=(0, 0, 0), bevel
     return _carve_object(bm, regions, region)
 
 
-def finish_surface(obj, regions, pairs, insets=(("GLASS", 0.016, 0.012),), frame="FRAME", gap=0.0055, depth=0.009):
+def finish_surface(obj, regions, pairs, insets=(("GLASS", 0.016, 0.012),), frame="FRAME", gap=0.0042, depth=0.008):
     """Opens the panel gaps and sinks the glass into the body."""
     names = list(regions)
     pairs = {frozenset(pair) for pair in pairs} if LOD == "hi" else set()
@@ -894,6 +895,9 @@ def build_wheel(name):
     with kit.Group() as extra:
         # The back of the wheel is closed, so from behind it reads as a solid wheel and not a ring.
         kit.cyl("wheel_back", rim_radius + 0.004, 0.006, (inner + 0.012, 0, 0), (1, 0, 0), mat="metal_dark", segs=28 if LOD == "hi" else 10)
+        if inner > -W / 2 + 0.01:
+            # A narrow tire still reaches its socket, through the hub of the axle.
+            kit.cyl("axle_stub", 0.05, inner + W / 2, ((inner - W / 2) / 2, 0, 0), (1, 0, 0), mat="metal_dark", segs=12)
         if realistic() and name in BRAKES:
             disc = rim_radius * 0.8
             x = inner + width * 0.42

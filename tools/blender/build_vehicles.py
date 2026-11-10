@@ -234,11 +234,18 @@ def build_body(d, axles):
     vk.mark_regions(regions)
     stations = stations_for(d)
     keys = [s["key"] for s in stations]
-    rings = []
-    for s in stations:
-        half = section(s)
-        rings.append([V((-x, s["y"], z)) for x, z in half] + [V((x, s["y"], z)) for x, z in reversed(half[1:-1])])
+    halves = [section(s) for s in stations]
     index = {key: i for i, key in enumerate(keys)}
+    if not d.get("open"):
+        # The A pillar runs straight from the corner of the roof to the corner of the hood. The
+        # sections in between would let it sag, so their pillar points sit on that line.
+        top, low = index["R0"], index["C0"]
+        for i in range(top + 1, low):
+            t = (stations[i]["y"] - stations[top]["y"]) / (stations[low]["y"] - stations[top]["y"])
+            for p in (7, 8):
+                a, b = halves[top][p], halves[low][p]
+                halves[i][p] = (lerp(a[0], b[0], t), lerp(a[1], b[1], t))
+    rings = [[V((-x, s["y"], z)) for x, z in half] + [V((x, s["y"], z)) for x, z in reversed(half[1:-1])] for s, half in zip(stations, halves)]
     box = d.get("box", 0.0)
     obj = vk.cage(
         "body",
@@ -314,20 +321,40 @@ def toy_car(d):
     for key in ("hood", "ws", "roof", "rw"):
         t[key] = d[key] * k
     t["front_door"] = d.get("front_door", 1.08) * k
+    # The floor rises a little; the rest of the body rises as much as the top of the bigger wheel
+    # arches, or the arches would cut into the hood and the trunk.
     low = (nr - r) * 0.8
-    for key in ("zb", "h_nose", "h_hl"):
-        t[key] = d[key] + low
-    for key in ("h_cowl", "h_belt", "h_deck", "h_tail"):
-        t[key] = d[key] + low + 0.04
-    t["h_roof"] = d["h_roof"] + low + 0.1
+    high = (nr - r) * 2.2 + 0.02
+    t["zb"] = d["zb"] + low
+    for key in ("h_nose", "h_hl", "h_cowl", "h_belt", "h_deck", "h_tail"):
+        t[key] = d[key] + high
+    t["h_roof"] = d["h_roof"] + high + 0.06
     for key in ("tail_z", "rear_bumper", "rear_glass_bottom", "side_z", "bumper_z"):
         if key in d:
-            t[key] = d[key] + low + 0.02
+            t[key] = d[key] + high
     if d.get("grille"):
         w, h, z = d["grille"]
-        t["grille"] = (w * 1.06, h * 1.2, z + low)
+        t["grille"] = (w * 1.06, h * 1.2, z + high)
     if d.get("carve"):
-        t["carve"] = [((sx, sy * k, sz), (x, y * k, z + low + 0.04)) for (sx, sy, sz), (x, y, z) in d["carve"]]
+        t["carve"] = [((sx, sy * k, sz), (x, y * k, z + high)) for (sx, sy, sz), (x, y, z) in d["carve"]]
+    # A low nose (a sports car) still has to clear the top of the front arch.
+    top = nr * 2.18 + 0.09
+    short = top - t["h_hl"]
+    if short > 0:
+        t["h_nose"] += short
+        t["h_hl"] += short
+        if "grille" in t and t["grille"]:
+            w, h, z = t["grille"]
+            t["grille"] = (w, h, z + short)
+        climb = max(0.0, t["h_hl"] + 0.06 - t["h_cowl"])
+        for key in ("h_cowl", "h_belt", "h_roof"):
+            t[key] += climb
+        if t["h_deck"] < t["h_belt"] - 0.02:
+            t["h_deck"] = t["h_belt"] + 0.04
+    short = top + 0.04 - t["h_tail"]
+    if short > 0:
+        t["h_tail"] += short
+        t["h_deck"] = max(t["h_deck"], t["h_tail"] + 0.03)
     t["W"] = d["W"] * 1.05
     t["roof_w"] = d["roof_w"] * 1.08
     t["box"] = d.get("box", 0.0) * 0.55
@@ -700,7 +727,7 @@ def lining(body, y0, y1, depth=0.03, z0=None):
     return kit.mesh_object("lining", bm, materials, recalc=False, sharp_angle=40.0)
 
 
-def car_seat(x, y, z, width=0.5, back=0.6, mat="z_seat", headrest=True):
+def car_seat(x, y, z, width=0.5, back=0.6, mat="z_upholstery", headrest=True):
     """A seat whose cushion top is at height z and whose backrest starts at y."""
     kit.rbox("seat_cushion", (width, 0.5, 0.13), (x, y + 0.26, z - 0.065), mat=mat, bevel=0.045, segs=2, rot=(-5, 0, 0))
     tilt = radians(16)
@@ -711,7 +738,7 @@ def car_seat(x, y, z, width=0.5, back=0.6, mat="z_seat", headrest=True):
         kit.rbox("headrest", (min(0.27, width * 0.55), 0.1, 0.17), tuple(top + V((0, -0.03, 0.1))), mat=mat, bevel=0.04, segs=2, rot=(10, 0, 0))
 
 
-def bench(y, z, width, back=0.58, mat="z_seat", heads=2):
+def bench(y, z, width, back=0.58, mat="z_upholstery", heads=2):
     """A rear bench: one wide cushion and backrest, with a headrest for each place."""
     car_seat(0.0, y, z, width=width, back=back, mat=mat, headrest=False)
     tilt = radians(16)
@@ -721,18 +748,55 @@ def bench(y, z, width, back=0.58, mat="z_seat", heads=2):
         kit.rbox("headrest", (0.25, 0.1, 0.16), tuple(top + V((0, -0.03, 0.09))), mat=mat, bevel=0.04, segs=2, rot=(10, 0, 0))
 
 
-def dashboard(y_front, y_back, z, half, driver_x, wheel_radius=0.18, wheel_tilt=62):
-    """Dash across the cabin, instrument hood, steering wheel and its column."""
-    depth = y_front - y_back
-    keys = [
-        dict(pos=y_front, c2=z - 0.04, w=half, h=0.07, e=4.0),
-        dict(pos=y_back + depth * 0.3, c2=z, w=half, h=0.12, e=4.0),
-        dict(pos=y_back, c2=z - 0.08, w=half * 0.98, h=0.1, e=4.0),
-    ]
-    kit.loft("dash", keys, n=24, sub=2, mat="z_cabin", sharp_angle=46.0)
-    kit.rbox("cluster_hood", (0.4, 0.16, 0.07), (driver_x, y_back + 0.1, z + 0.12), mat="z_plastic", bevel=0.03, segs=2)
-    kit.rbox("screen", (0.26, 0.03, 0.15), (0.0, y_back + 0.06, z + 0.08), mat="z_carbon", bevel=0.01, segs=1, rot=(-14, 0, 0))
-    center = V((driver_x, y_back - 0.2, z - 0.02))
+def glass_height(surface, y, half):
+    """How high the windshield (or the roof) is above a line across the cabin, at its lowest."""
+    lowest = None
+    for x in (0.0, half * 0.5, -half * 0.5, half * 0.9, -half * 0.9):
+        found = surface.hit(V((x, y, 8.0)), V((0, 0, -1)))
+        if found:
+            lowest = found[0].z if lowest is None else min(lowest, found[0].z)
+    return lowest if lowest is not None else 99.0
+
+
+def inner_half(surface, y, z, fallback):
+    """Half the width of the cabin at a point, measured from the middle to the walls."""
+    widths = []
+    for side in (-1, 1):
+        found = surface.hit(V((0.0, y, z)), V((side, 0, 0)))
+        if found:
+            widths.append(abs(found[0].x))
+    return min(widths) if widths else fallback
+
+
+def dashboard(surface, y_front, y_back, z, half, driver_x, wheel_radius=0.18, wheel_tilt=62):
+    """Dash across the cabin, instrument hood, steering wheel and its column.
+
+    Everything stays under the windshield and between the walls: the body is measured with rays,
+    so a steep or a flat windshield gets a dash that fits it.
+    """
+    keys = []
+    count = 7
+    bottom = z - 0.2
+    for i in range(count):
+        t = i / (count - 1)
+        y = lerp(y_front, y_back, t)
+        wanted = z + 0.12 * sin(pi * min(1.0, t * 1.4)) - 0.06 * t
+        top = min(wanted, glass_height(surface, y, half) - 0.05)
+        if top < bottom + 0.05:
+            continue
+        width = min(half, inner_half(surface, y, (top + bottom) / 2, half) - 0.04, inner_half(surface, y, top, half) - 0.04)
+        keys.append(dict(pos=y, c2=(top + bottom) / 2, w=max(0.1, width), h=(top - bottom) / 2, e=4.0))
+    if len(keys) >= 2:
+        # Dashboards are dark, so they do not show in the windshield; not black, or the glass looks painted.
+        kit.loft("dash", keys, n=24, sub=2, mat="z_upholstery", sharp_angle=46.0)
+    limit = glass_height(surface, y_back + 0.1, half) - 0.04
+    kit.rbox("cluster_hood", (0.4, 0.16, 0.07), (driver_x, y_back + 0.1, min(z + 0.12, limit - 0.035)), mat="z_plastic", bevel=0.03, segs=2)
+    kit.rbox("screen", (0.26, 0.03, 0.15), (0.0, y_back + 0.06, min(z + 0.08, limit - 0.08)), mat="z_carbon", bevel=0.01, segs=1, rot=(-14, 0, 0))
+    # The top of the wheel must clear the glass as well.
+    tilt = radians(wheel_tilt)
+    y = y_back - 0.2
+    top_y = y + wheel_radius * cos(tilt)
+    center = V((driver_x, y, min(z - 0.02, glass_height(surface, top_y, half) - wheel_radius * sin(tilt) - 0.06)))
     kit.torus("steering_rim", wheel_radius, 0.018, kit.mtx_of(tuple(center), (wheel_tilt, 0, 0)), mat="z_plastic", n_major=28, n_minor=8)
     hub = kit.mtx_of(tuple(center), (wheel_tilt, 0, 0))
     kit.cyl("steering_hub", 0.06, 0.05, tuple(center), tuple(hub.to_3x3() @ V((0, 0, 1))), mat="z_plastic", segs=16)
@@ -761,7 +825,7 @@ def car_interior(d, body):
         car_seat(x, y_b + 0.02, seat_z, width=0.5)
     kit.rbox("console", (0.2, 0.62, 0.2), (0.0, y_b + 0.32, floor + 0.12), mat="z_plastic", bevel=0.04, segs=2)
     dash_back = max(y_b + 0.72, y_cowl - 0.5)
-    dashboard(y_cowl + 0.05, dash_back, d["h_belt"] + 0.02, hw - 0.08, driver)
+    dashboard(Surface(body), y_cowl - 0.03, dash_back, d["h_belt"] + 0.02, hw - 0.08, driver)
     rows = d.get("van_rows", 1 if d.get("doors", 4) == 4 or d["roof"] > 1.3 else 0)
     # The first rear row sits behind the front seats, but never under a sloping rear window.
     y = max(y_b - 0.95, y_rr + 0.08)
@@ -972,10 +1036,10 @@ CARS["sedan_luxo"] = design("Sedã de luxo", L=5.0, hood=1.56, ws=0.84, roof=1.3
 CARS["hatch"] = design("Hatch", L=3.98, hood=1.02, ws=0.74, roof=1.62, rw=0.3, r=0.33, front=1.32, rear=-1.2, h_roof=1.47, h_deck=1.1, h_tail=1.06, tail="vertical", tail_h=0.32, tail_drop=0.2, exhaust=1, extras=("roof_spoiler",), wheel="calota", grille=(0.76, 0.1, 0.64), plate_r=0.36, pillars=(0.2,), tail_w=0.96)
 CARS["hatch_esportivo"] = design("Hatch esportivo", base="hatch", W=1.88, r=0.35, zb=0.15, h_nose=0.64, h_hl=0.77, h_cowl=0.9, h_belt=0.91, h_roof=1.36, h_deck=1.03, h_tail=1.0, stripes=True, exhaust=2, grille_style="mesh", grille=(0.86, 0.13, 0.58), wheel="slick", side_stripe="z_accent", side_z=0.42, lip="z_trim", extras=("roof_spoiler",), grille_frame="z_carbon", intake_w=0.62, tail="wedge")
 CARS["perua"] = design("Perua", L=4.75, hood=1.24, ws=0.8, roof=2.22, rw=0.2, r=0.35, front=1.56, rear=-1.32, h_roof=1.48, h_deck=1.24, h_tail=1.18, quarter_glass=True, tail="vertical", tail_drop=0.3, tail_h=0.36, extras=("roof_rails",), chrome_rails=True, pillars=(0.43,), rear_side_glass=True, exhaust=1, tail_w=0.96)
-CARS["coupe"] = design("Cupê", L=4.5, hood=1.4, ws=0.92, roof=0.74, rw=0.9, doors=2, r=0.36, front=1.46, rear=-1.24, h_nose=0.62, h_hl=0.74, h_cowl=0.87, h_belt=0.89, h_roof=1.3, h_deck=0.98, h_tail=0.95, roof_w=0.6, b=0.4, stripes=True, tail="bar", wheel="estrela", side_stripe="z_accent", side_z=0.56, side_h=0.02, grille_style="mesh", grille=(0.8, 0.09, 0.56), grille_frame="z_carbon", intake_w=0.58, extras=("roof_spoiler",))
+CARS["coupe"] = design("Cupê", plate_f=0.2, L=4.5, hood=1.4, ws=0.92, roof=0.74, rw=0.9, doors=2, r=0.36, front=1.46, rear=-1.24, h_nose=0.62, h_hl=0.74, h_cowl=0.87, h_belt=0.89, h_roof=1.3, h_deck=0.98, h_tail=0.95, roof_w=0.6, b=0.4, stripes=True, tail="bar", wheel="estrela", side_stripe="z_accent", side_z=0.56, side_h=0.02, grille_style="mesh", grille=(0.8, 0.09, 0.56), grille_frame="z_carbon", intake_w=0.58, extras=("roof_spoiler",))
 CARS["super"] = design("Superesportivo", L=4.5, W=1.98, zb=0.1, hood=1.24, ws=1.06, roof=0.56, rw=1.05, doors=2, r=0.34, front=1.42, rear=-1.32, h_nose=0.5, h_hl=0.7, h_cowl=0.82, h_belt=0.84, h_roof=1.13, h_deck=0.98, h_tail=0.95, roof_w=0.52, b=0.55, crown=0.02, stripes=True, tail="bar", lamp="slim", lamp_drop=0.1, grille=None, intake_w=0.7, exhaust=4, wheel="turbina", waist=0.93, extras=("wing",), lip="z_trim", skirt_mat="z_trim", skirt_depth=0.03, side_stripe="z_accent", side_z=0.42, side_h=0.03, plate_f=0.16, plate_r=0.26, bumper_gap=0.08)
 CARS["muscle"] = design("Muscle", L=4.8, W=1.92, hood=1.7, ws=0.74, roof=0.86, rw=0.76, doors=2, r=0.37, front=1.62, rear=-1.34, h_nose=0.74, h_hl=0.84, h_cowl=0.97, h_belt=0.98, h_roof=1.36, h_deck=1.05, h_tail=1.03, roof_w=0.62, b=0.35, stripes=True, grille=(1.1, 0.14, 0.62), grille_style="mesh", grille_frame="z_carbon", tail="square", lamp="round", lamp_r=0.09, exhaust=2, wheel="raio", extras=("scoop", "roof_spoiler"))
-CARS["conversivel"] = design("Conversível", L=4.45, hood=1.3, ws=0.62, roof=1.0, rw=0.5, doors=2, open=True, r=0.35, front=1.44, rear=-1.24, h_nose=0.66, h_hl=0.78, h_cowl=0.91, h_belt=0.92, h_roof=1.34, h_deck=0.98, h_tail=0.96, roof_w=0.6, b=0.4, regions={"COWL": "paint"}, carve=[((1.4, 1.5, 0.5), (0, 0.01, 1.0))], extras=("cockpit",), tail="bar", grille_style="mesh", grille_frame="z_carbon", wheel="estrela", side_stripe="z_accent", side_z=0.5, side_h=0.02)
+CARS["conversivel"] = design("Conversível", plate_f=0.2, L=4.45, hood=1.3, ws=0.62, roof=1.0, rw=0.5, doors=2, open=True, r=0.35, front=1.44, rear=-1.24, h_nose=0.66, h_hl=0.78, h_cowl=0.91, h_belt=0.92, h_roof=1.34, h_deck=0.98, h_tail=0.96, roof_w=0.6, b=0.4, regions={"COWL": "paint"}, carve=[((1.4, 1.5, 0.5), (0, 0.01, 1.0))], extras=("cockpit",), tail="bar", grille_style="mesh", grille_frame="z_carbon", wheel="estrela", side_stripe="z_accent", side_z=0.5, side_h=0.02)
 CARS["classico"] = design("Clássico", L=4.0, W=1.74, zb=0.26, hood=1.12, ws=0.56, roof=1.12, rw=0.5, doors=2, r=0.36, front=1.32, rear=-1.26, h_nose=0.82, h_hl=0.92, h_cowl=1.02, h_belt=1.03, h_roof=1.5, h_deck=1.1, h_tail=0.94, roof_w=0.56, crown=0.1, waist=0.95, nose_w=0.7, tail_w=0.74, b=0.4, bumpers="chrome", lamp="round", tail="round", tail_drop=0.2, flare=0.075, flare_lift=0.038, grille=None, wheel="calota", exhaust=1, belt_trim="z_chrome", plate_f=0.3, plate_r=0.3, skirt_h=0.08)
 CARS["eletrico"] = design("Elétrico", L=4.5, W=1.88, hood=1.18, ws=1.0, roof=1.2, rw=0.98, r=0.36, front=1.46, rear=-1.4, h_nose=0.66, h_hl=0.76, h_cowl=0.93, h_belt=0.95, h_roof=1.44, h_deck=1.05, h_tail=1.0, roof_w=0.62, crown=0.03, lamp="slim", tail="bar", grille=None, exhaust=0, intake=False, wheel="turbina", bumper_gap=0.1)
 CARS["compacto"] = design("Compacto", L=3.4, W=1.66, hood=0.92, ws=0.66, roof=1.42, rw=0.16, r=0.31, front=1.02, rear=-1.02, h_nose=0.76, h_hl=0.88, h_cowl=1.0, h_belt=1.02, h_roof=1.58, h_deck=1.2, h_tail=1.16, roof_w=0.6, tail="vertical", tail_h=0.4, tail_drop=0.26, lamp="round", lamp_r=0.08, grille=(0.6, 0.08, 0.72), wheel="calota", exhaust=1, plate_r=0.32, regions={"ROOF": "trim"}, intake_w=0.4, tail_w=0.96, front_door=0.98)
@@ -991,10 +1055,10 @@ CARS["picape_dupla"] = design("Picape cabine dupla", base="picape", L=5.5, roof=
 CARS["picape_classica"] = design("Picape clássica", base="picape", L=4.9, W=1.86, zb=0.38, box=0.2, roof=0.8, hood=1.3, front=1.66, rear=-1.46, bumpers="chrome", lamp="round", lamp_r=0.1, grille=(0.94, 0.2, 0.9), grille_style="tall", tail="round", wheel="calota", flare=0.1, flare_lift=0.05, flare_mat="z_paint", bumper_z=0.62, extras=("bed",))
 
 CARS["van"] = design(
-    "Van", L=5.6, W=2.0, zb=0.32, hood=0.95, ws=0.95, roof=3.5, rw=0.06, r=0.37, front=1.86, rear=-1.62,
-    h_nose=1.02, h_hl=1.14, h_cowl=1.26, h_belt=1.28, h_roof=2.42, h_deck=2.4, h_tail=2.38, roof_w=0.93, box=0.72, waist=0.985, tail_w=0.985,
-    crown=0.02, nose_w=0.93, front_door=1.05, doors=4, sliding=True, pillars=(0.3, 0.58), glass_top=0.74, flat_back=True, rear_windows=2, van_rows=3, ws_glass=0.8,
-    lamp="square", lamp_size=(0.36, 0.2), lamp_drop=0.2, tail="vertical", tail_h=0.66, tail_z=0.98, rear_bumper=0.74, grille=(0.96, 0.26, 0.8), grille_style="mesh",
+    "Van", L=5.6, W=2.0, zb=0.32, hood=1.0, ws=0.9, roof=3.5, rw=0.06, r=0.37, front=1.86, rear=-1.62,
+    h_nose=1.08, h_hl=1.2, h_cowl=1.34, h_belt=1.36, h_roof=2.42, h_deck=2.4, h_tail=2.38, roof_w=0.93, box=0.72, waist=0.985, tail_w=0.985,
+    crown=0.02, nose_w=0.94, front_door=1.05, doors=4, sliding=True, pillars=(0.3, 0.58), glass_top=0.72, flat_back=True, rear_windows=2, van_rows=3, ws_glass=0.7,
+    lamp="square", lamp_size=(0.4, 0.22), lamp_drop=0.22, tail="vertical", tail_h=0.66, tail_z=0.98, rear_bumper=0.74, grille=(1.04, 0.3, 0.84), grille_style="mesh",
     wheel="calota", exhaust=1, plate_f=0.36, plate_r=0.52, flare=0.05, flare_lift=0.018, flare_mat="z_plastic", skirt_h=0.14, regions={"PILLAR": "carbon"},
     quarter_glass=False, mirror=1.0,
 )
@@ -1142,7 +1206,7 @@ def cab_interior(d, body):
     driver = -hw * 0.48
     for x in (driver, -driver):
         car_seat(x, y_rr + 0.28, seat_z, width=0.56, back=0.72)
-    dashboard(y_cowl + 0.05, y_cowl - 0.38, d["h_belt"] - 0.04, hw - 0.1, driver, wheel_radius=0.23, wheel_tilt=36)
+    dashboard(Surface(body), y_cowl - 0.03, y_cowl - 0.42, d["h_belt"] - 0.04, hw - 0.1, driver, wheel_radius=0.23, wheel_tilt=36)
 
 
 def truck_front(y, hw, z, wide=1.0):
@@ -1585,9 +1649,11 @@ def cargo_carrier(y0, y1, z0, hw):
         kit.rbox("post", (0.09, 0.12, lerp(tail, high, 0.5) - low), (s * (hw - 0.03), lerp(y0, bend, 0.5), (low + lerp(tail, high, 0.5)) / 2), mat="z_paint", bevel=0.012, segs=1)
         kit.rbox("rail", (0.05, y1 - bend - 0.3, 0.07), (s * (hw - 0.03), (bend + y1) / 2, high + 0.42), mat="z_trim", bevel=0.01, segs=1)
     colors = ("z_accent", "z_trim", "z_white", "z_steel", "z_accent", "z_trim")
-    for i, y in enumerate((y1 - 2.0, y1 - 5.7, y1 - 9.3)):
+    # A shorter trailer (Arcade) carries fewer cars, so none hangs off the end.
+    long = y1 - y0 > 10.0
+    for i, y in enumerate((y1 - 2.0, y1 - 5.7, y1 - 9.3) if long else (y1 - 2.0, y1 - 5.6)):
         carried_car(y, low + 0.06, 0.0, colors[i])
-    for i, y in enumerate((y1 - 2.1, y1 - 5.9)):
+    for i, y in enumerate((y1 - 2.1, y1 - 5.9) if long else (y1 - 2.1,)):
         carried_car(y, high + 0.07, 0.0, colors[i + 3])
     lean = (high - tail) / (bend - y0)
     y = y0 + 1.72
@@ -1860,7 +1926,7 @@ def bus_interior(b, d, body, hw, L, y_cowl, y_rf, y_tail, doors):
     driver = -(hw - 0.55)
     car_seat(driver, y_cowl - 1.25, floor + 0.5, width=0.52, back=0.68)
     # A bus driver sits high, with the wheel almost flat in front of the knees.
-    dashboard(y_cowl - 0.05, y_cowl - 0.55, floor + 0.82, hw - 0.1, driver, wheel_radius=0.24, wheel_tilt=34)
+    dashboard(Surface(body), y_cowl - 0.05, y_cowl - 0.55, floor + 0.82, hw - 0.1, driver, wheel_radius=0.24, wheel_tilt=34)
 
 
 # --- motorcycles ------------------------------------------------------------------------------
