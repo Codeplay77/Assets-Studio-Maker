@@ -180,7 +180,7 @@ export function mirrorShape(axis: "x" | "y" | "z"): Promise<void> {
   return runOnShape({ op: "mirror", axis }, clearAfter);
 }
 
-export function paintSelected(material: { color?: string; finish?: string }): Promise<void> {
+export function paintSelected(material: { color?: string; finish?: string; texture?: string }): Promise<void> {
   return runOnShape({ op: "paint", faces: { ids: selectedFaces() }, ...material });
 }
 

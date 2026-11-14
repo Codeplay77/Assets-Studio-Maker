@@ -1,7 +1,10 @@
-// Converts the CC0 human animations of Mesh2Motion into the editor's animation pack.
+// Converts the CC0 human animations of Mesh2Motion, and the editor's own dances and fighting moves,
+// into the editor's animation pack.
 //
-//   node scripts/import-animations.ts <folder with human-base-animations.glb and human-addon-animations.glb>
+//   node scripts/import-animations.ts <folder with human-base-animations.glb and human-addon-animations.glb> <dancas.glb> <combate.glb>
 //
+// The editor's own clips are made on the same skeleton by tools/blender/make_dances.py and
+// tools/blender/make_combat.py; any number of their GLBs may follow the folder.
 // The files come from https://github.com/Mesh2Motion/mesh2motion-app (models, rigs and animations
 // are CC0). Each file is only parsed as data; nothing from it is ever executed.
 //
@@ -18,22 +21,32 @@ const FILES = [
   { file: "human-addon-animations.glb", set: "extra" },
 ];
 
-/** The bones the pack keeps, parents before children. Unreal mannequin names, like the source. */
-const BONES = [
+/** The body's bones, which tell whether a clip repeats. */
+const BODY = [
   "pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "head",
   "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l",
   "clavicle_r", "upperarm_r", "lowerarm_r", "hand_r",
   "thigh_l", "calf_l", "foot_l", "ball_l",
   "thigh_r", "calf_r", "foot_r", "ball_r",
-] as const;
+];
+/** Three bones in each finger, from the knuckle out. */
+const FINGERS = ["thumb", "index", "middle", "ring", "pinky"].flatMap((finger) => ["01", "02", "03"].map((bone) => `${finger}_${bone}`));
+
+/**
+ * The bones the pack keeps, parents before children. Unreal mannequin names, like the source. The
+ * fingers come last, so a skeleton without them (the people of the other styles) uses the first ones.
+ */
+const BONES = [...BODY, ...["l", "r"].flatMap((side) => FINGERS.map((bone) => `${bone}_${side}`))];
 
 /** Where each bone points at rest: toward this other joint. */
-const TIP: Record<(typeof BONES)[number], string> = {
+const TIP: Record<string, string> = {
   pelvis: "spine_01", spine_01: "spine_02", spine_02: "spine_03", spine_03: "neck_01", neck_01: "head", head: "head_leaf",
   clavicle_l: "upperarm_l", upperarm_l: "lowerarm_l", lowerarm_l: "hand_l", hand_l: "middle_01_l",
   clavicle_r: "upperarm_r", upperarm_r: "lowerarm_r", lowerarm_r: "hand_r", hand_r: "middle_01_r",
   thigh_l: "calf_l", calf_l: "foot_l", foot_l: "ball_l", ball_l: "ball_leaf_l",
   thigh_r: "calf_r", calf_r: "foot_r", foot_r: "ball_r", ball_r: "ball_leaf_r",
+  // A finger bone points to the next one; the last, to the fingertip.
+  ...Object.fromEntries(BONES.filter((bone) => /_0[123]_[lr]$/.test(bone)).map((bone) => [bone, bone.replace(/_0([123])_/, (_, n) => `_0${Number(n) + 1}${n === "3" ? "_leaf" : ""}_`)])),
 };
 
 const CATEGORIES = [
@@ -207,7 +220,66 @@ const NAMES: Record<string, [string, Category]> = {
   Zombie_Idle_Crouch: ["Zumbi agachado", "Zumbi"],
   Zombie_Rise: ["Zumbi levantando", "Zumbi"],
   Zombie_Walk_2: ["Zumbi andando 2", "Zumbi"],
+  // Made for the editor (tools/blender/make_dances.py).
+  Danca_Samba: ["Dança: samba no pé", "Dança"],
+  Danca_Forro: ["Dança: forró", "Dança"],
+  Danca_Axe: ["Dança: axé", "Dança"],
+  Danca_Frevo: ["Dança: frevo", "Dança"],
+  Danca_Passinho: ["Dança: passinho", "Dança"],
+  Danca_Disco: ["Dança: disco", "Dança"],
+  Danca_HipHop: ["Dança: balanço do hip hop", "Dança"],
+  Danca_Robo: ["Dança: robô", "Dança"],
+  Danca_Twist: ["Dança: twist", "Dança"],
+  Danca_Salsa: ["Dança: salsa", "Dança"],
+  Danca_Palmas: ["Dança: passo de lado com palmas", "Dança"],
+  Danca_Rock: ["Dança: rock na guitarra", "Dança"],
+  // Made for the editor (tools/blender/make_combat.py). They all start and end in the same guard.
+  Combate_Guarda: ["Combate: guarda", "Luta"],
+  Combate_Jab: ["Combate: jab", "Luta"],
+  Combate_Direto: ["Combate: direto", "Luta"],
+  Combate_Gancho: ["Combate: gancho", "Luta"],
+  Combate_Uppercut: ["Combate: uppercut", "Luta"],
+  Combate_Um_Dois: ["Combate: jab e direto", "Luta"],
+  Combate_Sequencia: ["Combate: jab, direto e gancho", "Luta"],
+  Combate_Soco_Corpo: ["Combate: soco no corpo", "Luta"],
+  Combate_Cotovelada: ["Combate: cotovelada", "Luta"],
+  Combate_Joelhada: ["Combate: joelhada", "Luta"],
+  Combate_Chute_Frontal: ["Combate: chute frontal", "Luta"],
+  Combate_Chute_Lateral: ["Combate: chute lateral", "Luta"],
+  Combate_Chute_Circular: ["Combate: chute circular", "Luta"],
+  Combate_Chute_Baixo: ["Combate: chute baixo", "Luta"],
+  Combate_Esquiva_Pendulo: ["Combate: esquiva pendular", "Luta"],
+  Combate_Esquiva_Tras: ["Combate: esquiva para trás", "Luta"],
+  Combate_Bloqueio: ["Combate: bloqueio alto", "Luta"],
+  Combate_Empurrao: ["Combate: empurrão", "Luta"],
+  Combate_Agarrar: ["Combate: agarrar", "Luta"],
+  Combate_Martelo: ["Combate: golpe de martelo", "Luta"],
+  Combate_Dano_Rosto: ["Combate: levar soco no rosto", "Luta"],
+  Combate_Dano_Barriga: ["Combate: levar golpe na barriga", "Luta"],
+  Combate_Atordoado: ["Combate: atordoado", "Luta"],
+  Combate_Provocar: ["Combate: chamar para a briga", "Luta"],
+  Combate_Vitoria: ["Combate: comemorar vitória", "Luta"],
+  Capoeira_Ginga: ["Capoeira: ginga", "Luta"],
+  Capoeira_Meia_Lua: ["Capoeira: meia-lua de frente", "Luta"],
 };
+
+/**
+ * Actions that happen once, even though they start and end in the same stance: a game waits for
+ * them to finish (an attack lands, a door opens), and an engine never reports the end of a clip
+ * that repeats.
+ */
+const ONCE = new Set([
+  "Attack_Ground_Pound", "Backflip", "Bow", "Bow Pull Back", "Bow Release", "Chest_Open", "ClimbUp_1m_RM", "Consume", "Consume Item",
+  "Death_A", "Death_B", "Death_C", "Death_D", "Dodge_back", "Dodge_back_RM", "Dodge_left", "Dodge_left_RM", "Dodge_right", "Dodge_right_RM",
+  "Farm_Harvest", "Farm_PlantSeed", "Fighting Left Jab", "Fighting Right Jab", "Hit_Chest", "Hit_Head", "Hit_Knockback", "Hit_Knockback_RM",
+  "Interact", "Jump_2", "Jump_2_RM", "Jump_Land", "Jump_Start", "Land_Three_Point", "LayToIdle", "Levitate Entrance", "Melee_Hook",
+  "Melee_Hook_Rec", "NinjaJump_Land", "NinjaJump_Start", "OverhandThrow", "PickUp_Table", "Pistol_Reload", "Pistol_Shoot", "Punch_Cross",
+  "Punch_Jab", "Roll", "Roll_RM", "Run Jump", "Shield_Dash_RM", "Shield_OneShot", "Sitting_Enter", "Sitting_Exit", "Slide_Exit", "Slide_Start",
+  "Spell_Simple_Enter", "Spell_Simple_Exit", "Spell_Simple_Shoot", "Sword_Attack", "Sword_Attack_Air_Vertical", "Sword_Attack_RM",
+  "Sword_Dash_RM", "Sword_Regular_A", "Sword_Regular_A_Rec", "Sword_Regular_B", "Sword_Regular_B_Rec", "Sword_Regular_C", "Sword_Regular_C_RM",
+  "Sword_Regular_Combo", "Throw Object", "Two-hand Blast", "Victory", "Victory Fist Pump", "Zombie_Rise",
+  ...Object.keys(NAMES).filter((id) => /^(Combate|Capoeira)_/.test(id) && !["Combate_Guarda", "Combate_Atordoado", "Capoeira_Ginga"].includes(id)),
+]);
 
 interface Gltf {
   nodes: { name?: string; children?: number[]; translation?: number[]; rotation?: number[]; scale?: number[] }[];
@@ -262,8 +334,8 @@ function sample(track: Track, time: number, size: number, out: number[]): void {
   }
 }
 
-const source = process.argv[2];
-if (!source) throw new Error("Informe a pasta com os GLBs de animação humana do Mesh2Motion.");
+const [source, ...own] = process.argv.slice(2);
+if (!source || own.length === 0) throw new Error("Informe a pasta com os GLBs de animação humana do Mesh2Motion e os GLBs do editor (dancas.glb, combate.glb).");
 const repo = path.resolve(import.meta.dirname, "..");
 
 interface ClipOut {
@@ -282,8 +354,8 @@ const chunks: Buffer[] = [];
 let size = 0;
 let rest: { joints: Record<string, number[]>; directions: Record<string, number[]> } | null = null;
 
-for (const { file, set } of FILES) {
-  const { json, bin } = readGlb(path.join(source, file));
+for (const { file, set } of [...FILES.map(({ file, set }) => ({ file: path.join(source, file), set })), ...own.map((file) => ({ file, set: "editor" }))]) {
+  const { json, bin } = readGlb(file);
   const nodes = json.nodes;
   const byName = new Map(nodes.map((node, index) => [node.name ?? "", index]));
   const parent = new Map<number, number>();
@@ -372,13 +444,20 @@ for (const { file, set } of FILES) {
       });
     }
 
-    // A clip loops when it ends in the pose it starts with, without having gone anywhere.
+    // A clip repeats when going from its last pose back to its first is no bigger a change than one
+    // of its own steps: either it ends on its first pose again, or one step before it.
+    const turnAt = (frame: number, b: number) => {
+      const at = (frame * BONES.length + b) * 4;
+      return new Quaternion(...Array.from(rotations.subarray(at, at + 4), (v) => v / 32767)).normalize();
+    };
     let worst = 0;
-    for (let b = 0; b < BONES.length; b++) {
-      const first = new Quaternion(...Array.from(rotations.subarray(b * 4, b * 4 + 4), (v) => v / 32767)).normalize();
-      const end = ((frames - 1) * BONES.length + b) * 4;
-      const last = new Quaternion(...Array.from(rotations.subarray(end, end + 4), (v) => v / 32767)).normalize();
-      worst = Math.max(worst, first.angleTo(last));
+    let closes = true;
+    for (let b = 0; b < BODY.length; b++) {
+      const gap = turnAt(0, b).angleTo(turnAt(frames - 1, b));
+      worst = Math.max(worst, gap);
+      let step = 0;
+      for (let frame = 0; frame + 1 < frames; frame++) step = Math.max(step, turnAt(frame, b).angleTo(turnAt(frame + 1, b)));
+      if (gap > Math.max(1.5 * step, (4 * Math.PI) / 180)) closes = false;
     }
     // Some clips that travel jump back to the start on their last frame, so how far the hips get
     // during the clip is what tells a clip that goes somewhere.
@@ -390,12 +469,31 @@ for (const { file, set } of FILES) {
       away = Math.max(away, Math.hypot(offset.x, offset.z));
     }
     const travelled = away > 0.5;
-    const loop = worst < (4 * Math.PI) / 180 && travel.length() < 0.05 && !travelled;
+    // A clip that wanders and snaps back to the start on its last frame does not repeat: its hips
+    // jump there instead of walking.
+    let stride = 0;
+    for (let frame = 0; frame + 2 < frames; frame++) stride = Math.max(stride, new Vector3().fromArray(moves, (frame + 1) * 3).distanceTo(new Vector3().fromArray(moves, frame * 3)));
+    const lastStep = frames > 1 ? new Vector3().fromArray(moves, (frames - 1) * 3).distanceTo(new Vector3().fromArray(moves, (frames - 2) * 3)) : 0;
+    const snaps = lastStep > Math.max(3 * stride, 0.05);
+    const loop = !ONCE.has(animation.name) && closes && travel.length() < 0.05 && !snaps;
+
+    // A cycle that stops one step before its first pose gets that pose again at the end, so it
+    // wraps around without a jump.
+    let out = { rotations, moves, frames };
+    if (loop && worst > (1 * Math.PI) / 180) {
+      const longer = new Int16Array((frames + 1) * BONES.length * 4);
+      longer.set(rotations);
+      longer.set(rotations.subarray(0, BONES.length * 4), frames * BONES.length * 4);
+      const further = new Float32Array((frames + 1) * 3);
+      further.set(moves);
+      further.set(moves.subarray(0, 3), frames * 3);
+      out = { rotations: longer, moves: further, frames: frames + 1 };
+    }
 
     const id = animation.name;
     if (clips.some((clip) => clip.id === id)) throw new Error(`clipe repetido: ${id}`);
-    clips.push({ id, label, category, set, frames, offset: size, loop, moves: travelled });
-    for (const data of [Buffer.from(rotations.buffer), Buffer.from(moves.buffer)]) {
+    clips.push({ id, label, category, set, frames: out.frames, offset: size, loop, moves: travelled });
+    for (const data of [Buffer.from(out.rotations.buffer), Buffer.from(out.moves.buffer)]) {
       chunks.push(data);
       size += data.length;
     }
@@ -410,7 +508,7 @@ const order = (clip: ClipOut) => CATEGORIES.indexOf(clip.category) * 1000 + clip
 const sorted = [...clips].sort((a, b) => order(a) - order(b) || a.label.localeCompare(b.label, "pt-BR"));
 const lines = [
   "// Gerado por scripts/import-animations.ts. Não edite à mão.",
-  "// Animações do Mesh2Motion (https://github.com/Mesh2Motion/mesh2motion-app), CC0.",
+  "// Animações do Mesh2Motion (https://github.com/Mesh2Motion/mesh2motion-app), CC0, e danças feitas para o editor.",
   "",
   `export const ANIMATION_FPS = ${FPS};`,
   `export const SOURCE_BONES = ${JSON.stringify(BONES)} as const;`,

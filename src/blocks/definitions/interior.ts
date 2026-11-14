@@ -49,9 +49,10 @@ const LOOKS: Record<Shell, ShellLook> = {
     boardHeight: 0.1,
     frame: { color: "#f3f1eb" },
     glass: { color: "#9fc3d6", finish: "tint" },
-    door: "#9a6b43",
+    door: "#d9c7b4",
     handle: { color: "#c9ccd2", finish: "metal" },
-    slab: plain(false),
+    // Painted plaster that follows the wall color, like the walls of a real room.
+    slab: (size: Vec3, at: Vec3, options: Options = {}) => box(size, { at, surface: "plaster_smooth", ...options }),
     // A 6 mm bevel can't be seen at room scale and costs ten times the triangles.
     trim: plain(false),
     bar: plain(false),
@@ -204,8 +205,18 @@ export const FLOOR_KINDS: Record<FloorKind, { name: string; color: string }> = {
   checker: { name: "Piso xadrez", color: "#2d2f36" },
 };
 
+/** Realista floors: laminate, porcelain tiles, a fabric carpet in the part's color, cement, marble. */
+const REAL_FLOORS: Record<FloorKind, Options> = {
+  wood: { surface: "laminate", color: "#ffffff" },
+  tile: { surface: "floor_tiles", color: "#ffffff" },
+  carpet: { surface: "cotton" },
+  concrete: { surface: "concrete", color: "#d8d8d4" },
+  checker: { surface: "marble", color: "#ffffff" },
+};
+
 function floorPieces(look: ShellLook, kind: FloorKind, shell: Shell): ShapePiece[] {
   const top = FLOOR_TOP;
+  if (shell === "realistic") return [box([END * 2, top, END * 2], { at: [0, top / 2, 0], ...REAL_FLOORS[kind] })];
   // Plain boxes even in Arcade: a floor is made of hundreds of tiles, and rounded edges cost triangles.
   const flat = (size: Vec3, at: Vec3, options: Options = {}) =>
     look.slab(size, at, shell === "arcade" && !options.finish ? { finish: "gloss", ...options } : options);
@@ -270,12 +281,12 @@ function shellBlocks(shell: Shell): BlockDef[] {
           look.trim([leafWidth, leafHeight, thick], [0, leafHeight / 2 + 0.005, 0], metalBar),
           look.trim([leafWidth - 0.14, leafHeight - 0.24, thick + 0.004], [0, leafHeight / 2 + 0.03, 0], look.glass),
         ]
-      : [look.trim([leafWidth, leafHeight, thick], [0, leafHeight / 2 + 0.005, 0], shell === "arcade" ? { finish: "gloss" } : {})];
+      : [look.trim([leafWidth, leafHeight, thick], [0, leafHeight / 2 + 0.005, 0], shell === "arcade" ? { finish: "gloss" } : shell === "realistic" ? { surface: "wood_oak" } : {})];
     if (!glass && shell !== "lowpoly" && shell !== "blocks") {
       // Two raised panels on each face.
       for (const side of [1, -1]) {
         for (const [y, h] of [[1.45, 0.95], [0.5, 0.7]] as const) {
-          pieces.push(look.bar([leafWidth - 0.2, h, 0.01], [0, y, side * (thick / 2 + 0.004)], { shade: 0.9 }));
+          pieces.push(look.bar([leafWidth - 0.2, h, 0.01], [0, y, side * (thick / 2 + 0.004)], shell === "realistic" ? { surface: "wood_oak", shade: 0.9 } : { shade: 0.9 }));
         }
       }
     }
@@ -863,12 +874,189 @@ const ARCADE_FURNITURE: Furniture[] = [
 const R_BLACK: Options = { color: "#16181c", finish: "gloss" };
 const R_SCREEN: Options = { color: "#0b0f15", finish: "glass" };
 const R_STEEL: Options = { color: "#b9bec6", finish: "metal" };
-const R_STONE: Options = { color: "#e4e1db", finish: "gloss" };
 const R_WHITE: Options = { color: "#f4f3ef" };
+const R_OAK: Options = { surface: "wood_oak", color: "#ffffff" };
+const R_WALNUT: Options = { surface: "wood_dark", color: "#ffffff" };
+const R_STONE: Options = { color: "#e2dfd9", finish: "gloss" };
+const R_SHEET: Options = { surface: "cotton", color: "#f1eee8" };
+/** Fabric that follows the part color: duvets, rugs, lamp shades. */
+const R_FABRIC: Options = { surface: "cotton" };
+const R_LEATHER: Options = { surface: "leather", color: "#ffffff" };
+const R_CERAMIC: Options = { color: "#f7f7f5", finish: "gloss" };
+const R_CHROME: Options = { color: "#dfe3e8", finish: "metal" };
+const R_DARK: Options = { color: "#2a2b2e" };
+
+/** A bed: oak frame and headboard, white sheets and pillows, a duvet in the part's color. */
+function realBed(id: string, name: string, width: number): Furniture {
+  const length = 2.0;
+  const pillows = width > 1.2 ? [-width / 4, width / 4] : [0];
+  return {
+    id,
+    name,
+    color: "#5f7d95",
+    size: [width + 0.12, 1.05, length + 0.12],
+    pieces: [
+      ...corners(width + 0.04, length + 0.04, 0.06).map(([x, z]) => r(0.07, 0.1, 0.07, x, 0, z, R_WALNUT, 0.004)),
+      r(width + 0.12, 0.26, length + 0.08, 0, 0.1, 0.02, R_OAK, 0.01),
+      r(width + 0.12, 1.05, 0.08, 0, 0, -(length + 0.12) / 2 + 0.04, R_OAK, 0.012),
+      r(width, 0.22, length - 0.02, 0, 0.36, 0.03, R_SHEET, 0.05),
+      r(width + 0.06, 0.07, length * 0.68, 0, 0.55, 0.03 + length * 0.16, R_FABRIC, 0.035),
+      r(width + 0.06, 0.08, 0.14, 0, 0.55, 0.03 + length * 0.16 - length * 0.34, R_SHEET, 0.035),
+      ...pillows.map((x) => r(Math.min(0.66, width - 0.16), 0.14, 0.4, x, 0.58, -length / 2 + 0.3, R_SHEET, 0.06)),
+    ],
+  };
+}
+
+/** Chrome legs of a star base, as five boxes turned around the center. */
+const starBase = (radius: number): ShapePiece[] =>
+  Array.from({ length: 5 }, (_, k) => box([0.04, 0.03, radius], { at: [Math.sin((k * 2 * Math.PI) / 5) * radius / 2, 0.06, Math.cos((k * 2 * Math.PI) / 5) * radius / 2], rot: [0, (k * 360) / 5, 0], ...R_CHROME }));
 const r = (w: number, h: number, d: number, x: number, y: number, z: number, options: Options = {}, radius = 0.006) =>
   roundedBox([w, h, d], Math.min(radius, Math.min(w, h, d) / 2.2), { at: [x, y + h / 2, z], ...options });
 
 const REALISTIC_FURNITURE: Furniture[] = [
+  realBed("bed_double", "Cama de casal", 1.6),
+  realBed("bed_single", "Cama de solteiro", 0.9),
+  {
+    id: "wardrobe",
+    name: "Guarda-roupa",
+    color: "#ffffff",
+    size: [1.5, 2.1, 0.6],
+    pieces: [
+      r(1.46, 0.08, 0.5, 0, 0, -0.03, R_DARK, 0.002),
+      r(1.5, 2.02, 0.58, 0, 0.08, -0.01, R_OAK, 0.004),
+      ...[-1, 0, 1].map((k) => r(0.49, 1.98, 0.02, k * 0.497, 0.1, 0.29, R_OAK, 0.003)),
+      ...[-1, 0, 1].map((k) => r(0.014, 0.4, 0.02, k * 0.497 + (k < 1 ? 0.2 : -0.2), 0.9, 0.31, R_CHROME, 0.004)),
+    ],
+  },
+  {
+    id: "floor_lamp",
+    name: "Luminária de chão",
+    color: "#efe6d6",
+    size: [0.44, 1.65, 0.44],
+    pieces: [
+      cylinder(0.15, 0.16, 0.03, 32, { at: [0, 0.015, 0], ...R_DARK }),
+      cylinder(0.012, 0.012, 1.35, 12, { at: [0, 0.7, 0], ...R_CHROME }),
+      cylinder(0.17, 0.22, 0.32, 40, { at: [0, 1.48, 0], ...R_FABRIC }),
+      sphere(0.05, { at: [0, 1.42, 0], color: "#fff4d8", finish: "glow" }),
+    ],
+  },
+  {
+    id: "table_lamp",
+    name: "Abajur",
+    color: "#efe6d6",
+    size: [0.32, 0.5, 0.32],
+    pieces: [
+      lathe([[0.0001, 0], [0.08, 0], [0.1, 0.05], [0.09, 0.16], [0.05, 0.24], [0.016, 0.26], [0.0001, 0.27]], { ...R_CERAMIC, color: "#5c7a8c" }, 32),
+      cylinder(0.008, 0.008, 0.08, 10, { at: [0, 0.3, 0], ...R_CHROME }),
+      cylinder(0.11, 0.16, 0.2, 36, { at: [0, 0.4, 0], ...R_FABRIC }),
+    ],
+  },
+  {
+    id: "fridge",
+    name: "Geladeira",
+    color: "#c9ccd1",
+    size: [0.7, 1.86, 0.7],
+    pieces: [
+      r(0.7, 1.84, 0.64, 0, 0.02, -0.03, { finish: "metal" }, 0.02),
+      r(0.66, 0.01, 0.02, 0, 1.22, 0.29, R_DARK, 0.002),
+      r(0.025, 0.4, 0.035, -0.29, 1.32, 0.31, R_CHROME, 0.008),
+      r(0.025, 0.55, 0.035, -0.29, 0.55, 0.31, R_CHROME, 0.008),
+      ...corners(0.6, 0.56, 0.04).map(([x, z]) => r(0.04, 0.02, 0.04, x, 0, z - 0.03, R_DARK, 0.004)),
+    ],
+  },
+  {
+    id: "toilet",
+    name: "Vaso sanitário",
+    color: "#f7f7f5",
+    size: [0.42, 0.82, 0.62],
+    pieces: [
+      lathe([[0.0001, 0], [0.12, 0], [0.13, 0.08], [0.16, 0.2], [0.19, 0.36], [0.19, 0.4], [0.0001, 0.4]], { ...R_CERAMIC, at: [0, 0, 0.03], scale: [1, 1, 1.25] }, 40),
+      r(0.37, 0.035, 0.42, 0, 0.4, 0.06, R_CERAMIC, 0.016),
+      r(0.4, 0.36, 0.18, 0, 0.42, -0.21, R_CERAMIC, 0.025),
+      r(0.42, 0.03, 0.2, 0, 0.78, -0.21, R_CERAMIC, 0.01),
+      r(0.06, 0.012, 0.03, 0.1, 0.81, -0.21, R_CHROME, 0.004),
+    ],
+  },
+  {
+    id: "bath_sink",
+    name: "Gabinete com pia",
+    color: "#ffffff",
+    size: [0.62, 1.05, 0.48],
+    pieces: [
+      r(0.58, 0.72, 0.44, 0, 0.1, -0.01, R_OAK, 0.004),
+      r(0.56, 0.1, 0.4, 0, 0, -0.02, R_DARK, 0.002),
+      r(0.62, 0.1, 0.48, 0, 0.82, 0, R_CERAMIC, 0.02),
+      r(0.44, 0.005, 0.3, 0, 0.92, 0.03, { color: "#dcdedf", finish: "gloss" }, 0.01),
+      cylinder(0.014, 0.018, 0.16, 16, { at: [0, 1.0, -0.17], ...R_CHROME }),
+      torus(0.05, 0.01, { at: [0, 1.08, -0.12], rot: [0, 90, 0], arc: Math.PI, ...R_CHROME }),
+    ],
+  },
+  {
+    id: "bathtub",
+    name: "Banheira",
+    color: "#f7f7f5",
+    size: [1.7, 0.58, 0.76],
+    pieces: [
+      r(1.7, 0.08, 0.76, 0, 0, 0, R_CERAMIC, 0.02),
+      r(1.7, 0.5, 0.07, 0, 0.08, 0.345, R_CERAMIC, 0.02),
+      r(1.7, 0.5, 0.07, 0, 0.08, -0.345, R_CERAMIC, 0.02),
+      r(0.07, 0.5, 0.62, 0.815, 0.08, 0, R_CERAMIC, 0.02),
+      r(0.07, 0.5, 0.62, -0.815, 0.08, 0, R_CERAMIC, 0.02),
+      cylinder(0.016, 0.016, 0.14, 12, { at: [-0.8, 0.64, 0], ...R_CHROME }),
+      torus(0.05, 0.012, { at: [-0.75, 0.71, 0], rot: [90, 0, 0], arc: Math.PI, ...R_CHROME }),
+    ],
+  },
+  {
+    id: "washer",
+    name: "Máquina de lavar",
+    color: "#f4f4f2",
+    size: [0.6, 0.85, 0.6],
+    pieces: [
+      r(0.6, 0.85, 0.58, 0, 0, -0.01, { finish: "gloss" }, 0.015),
+      r(0.58, 0.1, 0.01, 0, 0.73, 0.285, R_DARK, 0.003),
+      torus(0.17, 0.02, { at: [0, 0.42, 0.29], ...R_CHROME }),
+      cylinder(0.16, 0.16, 0.012, 40, { at: [0, 0.42, 0.29], rot: [90, 0, 0], color: "#40505c", finish: "glass" }),
+      cylinder(0.025, 0.025, 0.02, 20, { at: [0.2, 0.78, 0.295], rot: [90, 0, 0], ...R_CHROME }),
+    ],
+  },
+  {
+    id: "office_chair",
+    name: "Cadeira de escritório",
+    color: "#2b2d31",
+    size: [0.62, 1.05, 0.62],
+    pieces: [
+      ...starBase(0.56),
+      cylinder(0.025, 0.025, 0.36, 16, { at: [0, 0.27, 0], ...R_CHROME }),
+      r(0.5, 0.08, 0.48, 0, 0.45, 0, R_LEATHER, 0.03),
+      r(0.46, 0.5, 0.06, 0, 0.55, -0.24, R_LEATHER, 0.03),
+      ...[-1, 1].map((s) => r(0.05, 0.03, 0.26, s * 0.27, 0.66, 0.0, R_DARK, 0.01)),
+      ...[-1, 1].map((s) => r(0.03, 0.14, 0.03, s * 0.27, 0.52, -0.08, R_DARK, 0.006)),
+    ],
+  },
+  {
+    id: "towel_rack",
+    name: "Toalheiro com toalha",
+    color: "#e9e1d4",
+    size: [0.6, 0.6, 0.1],
+    mount: "wall",
+    pieces: [
+      ...[-1, 1].map((s) => r(0.03, 0.03, 0.08, s * 0.28, 0.5, -0.01, R_CHROME, 0.006)),
+      cylinder(0.01, 0.01, 0.58, 12, { at: [0, 0.515, 0.04], rot: [0, 0, 90], ...R_CHROME }),
+      r(0.4, 0.5, 0.025, 0, 0.03, 0.055, R_FABRIC, 0.01),
+      r(0.4, 0.04, 0.05, 0, 0.5, 0.04, R_FABRIC, 0.02),
+    ],
+  },
+  {
+    id: "desk",
+    name: "Escrivaninha",
+    color: "#ffffff",
+    size: [1.3, 0.75, 0.65],
+    pieces: [
+      r(1.3, 0.03, 0.65, 0, 0.72, 0, R_OAK, 0.004),
+      ...corners(1.26, 0.6, 0.03).map(([x, z]) => r(0.04, 0.72, 0.04, x, 0, z, R_DARK, 0.004)),
+      r(1.2, 0.12, 0.02, 0, 0.58, -0.28, R_DARK, 0.003),
+    ],
+  },
   {
     id: "tv",
     name: "TV de tela plana",
@@ -978,14 +1166,14 @@ const REALISTIC_FURNITURE: Furniture[] = [
     name: "Balcão de loja",
     color: "#2f3238",
     size: [1.5, 1.02, 0.62],
-    pieces: [r(1.46, 0.96, 0.56, 0, 0, -0.02, {}, 0.004), r(1.46, 0.06, 0.02, 0, 0.1, 0.27, R_STEEL, 0.004), r(1.5, 0.04, 0.62, 0, 0.96, 0, { color: "#c9a77c" }, 0.004)],
+    pieces: [r(1.46, 0.96, 0.56, 0, 0, -0.02, {}, 0.004), r(1.46, 0.06, 0.02, 0, 0.1, 0.27, R_STEEL, 0.004), r(1.5, 0.04, 0.62, 0, 0.96, 0, R_OAK, 0.004)],
   },
   {
     id: "rug",
     name: "Tapete",
     color: "#8a7f72",
     size: [2.0, 0.015, 1.4],
-    pieces: [r(2.0, 0.012, 1.4, 0, 0, 0, {}, 0.004), r(1.8, 0.003, 1.2, 0, 0.012, 0, { shade: 0.85 }, 0.002), r(1.7, 0.003, 1.1, 0, 0.013, 0, {}, 0.002)],
+    pieces: [r(2.0, 0.012, 1.4, 0, 0, 0, R_FABRIC, 0.004), r(1.8, 0.003, 1.2, 0, 0.012, 0, { ...R_FABRIC, shade: 0.8 }, 0.002), r(1.7, 0.003, 1.1, 0, 0.013, 0, R_FABRIC, 0.002)],
   },
 ];
 

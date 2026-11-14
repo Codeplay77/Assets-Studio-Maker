@@ -3,6 +3,7 @@ import type { Finish, GeneratedShape, ShapeMaterial, Vec3 } from "../core/types"
 import type { Assembler } from "./assembler";
 import { buildTree } from "./buildings";
 import { KIT_BOULDERS, KIT_BUSHES_ONLY, KIT_CACTI, KIT_FLOWERS, KIT_ROCKS, KIT_STUMPS, KIT_TUFTS } from "./kit";
+import { REAL_PROPS, realBlocks } from "./realNature";
 import type { Rng } from "./rng";
 
 // Maps for games: one continuous piece of ground, with relief, water and plants, and no buildings.
@@ -300,7 +301,7 @@ function adjust(hex: string, saturation: number, brightness: number): string {
   return `#${parts.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
 
-const STYLE_COLOR: Record<ArtStyle, [number, number]> = { lowpoly: [1.12, 1.06], realistic: [0.88, 0.98], arcade: [1.12, 1.05], blocks: [1.05, 1] };
+const STYLE_COLOR: Record<ArtStyle, [number, number]> = { lowpoly: [1.12, 1.06], realistic: [0.7, 0.9], arcade: [1.12, 1.05], blocks: [1.05, 1] };
 
 type Rgb = [number, number, number];
 
@@ -345,6 +346,9 @@ function materialsFor(biome: Biome, style: ArtStyle, painted: boolean): ShapeMat
   ];
   const materials: ShapeMaterial[] = zones.map(([hex, finish]) => (finish ? { color: color(hex), finish } : { color: color(hex) }));
   if (painted) materials[Zone.grass] = { color: "#ffffff", painted: true };
+  // Realista: the paint keeps its colors and a gray photo of forest ground under it adds the grain.
+  if (painted && style === "realistic") materials[Zone.grass] = { color: "#ffffff", painted: true, texture: "ground_detail" };
+  if (style === "realistic") materials[Zone.side] = { color: "#ffffff", texture: biome.palette === TEMPERATE ? "dirt" : "rock" };
   return materials;
 }
 
@@ -642,8 +646,7 @@ interface PropLists {
   cactus: string[];
 }
 
-const PROPS: Record<ArtStyle, PropLists> = {
-  realistic: { rock: ["nature.rock", "nature.rocks"], boulder: ["nature.boulder"], bush: ["nature.bush"], flower: ["nature.flower_red"], tuft: ["nature.grass"], cactus: ["nature.cactus"] },
+const PROPS: Record<Exclude<ArtStyle, "realistic">, PropLists> = {
   arcade: { rock: ["ar.nature_rock", "ar.nature_rocks"], boulder: ["ar.nature_boulder"], bush: ["ar.nature_bush"], flower: ["ar.nature_flower_red"], tuft: ["ar.nature_grass"], cactus: ["ar.nature_cactus"] },
   blocks: { rock: ["vx.rock"], boulder: ["vx.boulder"], bush: ["vx.bush"], flower: ["vx.flower_red"], tuft: ["vx.tuft"], cactus: ["vx.cactus"] },
   lowpoly: { rock: KIT_ROCKS, boulder: KIT_BOULDERS, bush: KIT_BUSHES_ONLY, flower: KIT_FLOWERS, tuft: KIT_TUFTS, cactus: KIT_CACTI },
@@ -652,7 +655,10 @@ const PROPS: Record<ArtStyle, PropLists> = {
 /** Trees come in clumps; rocks and small plants are spread over what is left. */
 function placeNature(asm: Assembler, rng: Rng, land: Land, ground: Ground, style: ArtStyle, density: number, rocks: boolean): void {
   const { biome, width, length } = land;
-  const props = PROPS[style];
+  const props: PropLists =
+    style === "realistic"
+      ? (Object.fromEntries(Object.entries(REAL_PROPS).map(([key, sources]) => [key, realBlocks(sources, true)])) as unknown as PropLists)
+      : PROPS[style];
   const amount = biome.forest * density;
   const spacing = Math.max(TREE_SPACING, Math.sqrt((width * length) / MOST_SPOTS));
   const spots = rng.fork("spots");
@@ -712,7 +718,7 @@ function placeNature(asm: Assembler, rng: Rng, land: Land, ground: Ground, style
     const y = ground.surface(x, z) - 0.05;
     const label = `tree ${Math.round(x * 10)} ${Math.round(z * 10)}`;
     if (kind === "dead" && style === "lowpoly") add(KIT_STUMPS, x, z, kinds.range(1, 1.5), label);
-    else buildTree(asm, rng.fork(label), { style, position: [x, y, z], kind });
+    else buildTree(asm, rng.fork(label), { style, position: [x, y, z], kind, light: true });
   }
 }
 

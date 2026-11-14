@@ -120,23 +120,25 @@ export const PERSON_OPTIONS: GeneratorOption[] = [
   {
     id: "outfit",
     label: "Roupa",
-    choices: fixed([
-      { id: "casual", label: "Casual" },
-      { id: "sport", label: "Esporte" },
-      { id: "formal", label: "Social" },
-      { id: "uniform", label: "Uniforme" },
-      { id: "dress", label: "Vestido" },
-    ]),
+    // Realista people come in MakeHuman's clothes, which have no dress.
+    choices: (style) =>
+      [
+        { id: "casual", label: "Casual" },
+        { id: "sport", label: "Esporte" },
+        { id: "formal", label: "Social" },
+        { id: "uniform", label: "Uniforme" },
+        { id: "dress", label: "Vestido" },
+      ].filter((choice) => style !== "realistic" || choice.id !== "dress"),
   },
   {
     id: "beard",
     label: "Barba",
     choices: yesNo,
-    applies: ({ options }) => options.sex !== "female" && options.age !== "child" && options.age !== "teen",
+    applies: ({ style, options }) => style !== "realistic" && options.sex !== "female" && options.age !== "child" && options.age !== "teen",
   },
-  { id: "glasses", label: "Óculos", choices: yesNo },
+  { id: "glasses", label: "Óculos", choices: yesNo, applies: ({ style }) => style !== "realistic" },
   { id: "hat", label: "Chapéu", choices: yesNo },
-  { id: "backpack", label: "Mochila", choices: yesNo },
+  { id: "backpack", label: "Mochila", choices: yesNo, applies: ({ style }) => style !== "realistic" },
 ];
 
 const SERVICE_KINDS = ["taxi", "police", "ambulance", "firetruck"];

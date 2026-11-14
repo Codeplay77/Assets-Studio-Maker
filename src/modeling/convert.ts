@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { getBlock } from "../blocks/catalog";
-import { BLOCK_FINISHES, buildGeometry } from "../blocks/geometry";
+import { buildGeometry, slotInfo } from "../blocks/geometry";
 import type { BlockFinish } from "../blocks/types";
 import type { Finish, Part, ShapeMaterial, Vec3 } from "../core/types";
 import { booleanMeshes, type BooleanMode } from "./boolean";
@@ -20,7 +20,6 @@ import {
 
 /** A shape keeps the closest finish a person can pick for it. */
 const EDITABLE: Record<BlockFinish, Finish> = { matte: "matte", gloss: "gloss", metal: "metal", glass: "glass", glow: "glow", paint: "gloss", tint: "glass" };
-const FINISHES: Finish[] = BLOCK_FINISHES.map((finish) => EDITABLE[finish]);
 const WELD_STEP = 1e-4;
 const MAX_MATERIALS = 256;
 const COPLANAR = 0.9999;
@@ -130,8 +129,9 @@ function collect(parts: Part[], bake: THREE.Matrix4 | null): PolyMesh {
     tint.set(part.color);
 
     for (const { start, count, materialIndex = 0 } of geometry.groups) {
-      const finish = FINISHES[Math.floor(materialIndex / 2)];
-      const follows = materialIndex % 2 === 0;
+      const slot = slotInfo(materialIndex);
+      const finish = EDITABLE[slot.finish];
+      const follows = !slot.fixed;
       for (let at = start; at < start + count; at += 3) {
         const corners = [0, 1, 2].map((offset) =>
           vertexAt(point.fromBufferAttribute(positions, at + offset).applyMatrix4(matrix)),
@@ -151,7 +151,8 @@ function collect(parts: Part[], bake: THREE.Matrix4 | null): PolyMesh {
         } else {
           material.color = `#${color.getHexString()}`;
         }
-        if (finish !== "matte") material.finish = finish;
+        if (slot.surface) material.texture = slot.surface;
+        else if (finish !== "matte") material.finish = finish;
 
         mesh.faces.push(corners);
         mesh.faceMaterials.push(materialFor(material));

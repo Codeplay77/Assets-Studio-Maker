@@ -2,7 +2,9 @@ import * as THREE from "three";
 import { mergeGeometries, toCreasedNormals } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { triangulateFace } from "../modeling/triangulate";
-import { decodeBaked, decodeModel } from "./modelPack";
+import { decodeBaked, decodeMapped, decodeModel, decodeSkinned } from "./modelPack";
+import { SURFACES, getSurface, surfaceIndex } from "./surfaces";
+import { createSurfaceMaterial } from "./textures";
 import type {
   BlockFinish,
   BlockShape,
@@ -24,9 +26,37 @@ const FACETED_ANGLE = THREE.MathUtils.degToRad(8);
 export const BLOCK_FINISHES: BlockFinish[] = ["matte", "gloss", "metal", "glass", "glow", "paint", "tint"];
 const FINISHES = BLOCK_FINISHES;
 
-/** Each finish has two material slots: one follows the part's color, one keeps its own. */
+/**
+ * Each finish has two material slots: one follows the part's color, one keeps its own. Textured
+ * surfaces come after the finishes, two slots each in the order of SURFACES.
+ */
+export const SURFACE_SLOTS = FINISHES.length * 2;
+
 const slotOf = (piece: ShapePiece) =>
-  FINISHES.indexOf(piece.finish ?? "matte") * 2 + (piece.color ? 1 : 0);
+  (piece.surface ? SURFACE_SLOTS + surfaceIndex(piece.surface) * 2 : FINISHES.indexOf(piece.finish ?? "matte") * 2) +
+  (piece.color ? 1 : 0);
+
+/** What a material slot draws: a finish or a textured surface, following the part's color or not. */
+export function slotInfo(slot: number): { finish: BlockFinish; surface?: string; fixed: boolean } {
+  const fixed = slot % 2 === 1;
+  if (slot < SURFACE_SLOTS) return { finish: FINISHES[Math.floor(slot / 2)], fixed };
+  return { finish: "matte", surface: SURFACES[Math.floor((slot - SURFACE_SLOTS) / 2)].id, fixed };
+}
+
+/** The surfaces a block's geometry draws, from its groups. */
+export function surfacesOfGeometry(geometry: THREE.BufferGeometry): string[] {
+  const ids = new Set<string>();
+  for (const { materialIndex = 0 } of geometry.groups) {
+    const { surface } = slotInfo(materialIndex);
+    if (surface) ids.add(surface);
+  }
+  return [...ids];
+}
+
+/** The surfaces a block shape uses, without building it. */
+export function surfacesOfShape(shape: BlockShape): string[] {
+  return [...new Set(piecesOf(shape).flatMap((piece) => (piece.surface ? [piece.surface] : [])))];
+}
 
 export const TINTED_GROUP = 0;
 export const FIXED_GROUP = 1;
@@ -399,6 +429,10 @@ export function buildPrimitive(shape: Primitive): THREE.BufferGeometry {
       return decodeModel(shape);
     case "baked":
       return decodeBaked(shape);
+    case "mapped":
+      return decodeMapped(shape);
+    case "skinned":
+      return decodeSkinned(shape);
     case "icosahedron":
       return new THREE.IcosahedronGeometry(shape.radius, shape.detail ?? 0);
     case "dodecahedron":
@@ -452,25 +486,91 @@ function repairNormals(geometry: THREE.BufferGeometry): void {
   }
 }
 
+const sign = (value: number) => (value < 0 ? -1 : 1);
+
+/**
+ * Lays a tiling texture on every face from the side the face looks at, in meters, so bricks and
+ * tiles keep their real size whatever the block. Sloped faces turn the texture to run down the
+ * slope, the way roof tiles do.
+ */
+function projectTexture(geometry: THREE.BufferGeometry, [width, height]: [number, number]): void {
+  const position = geometry.getAttribute("position");
+  const uv = new Float32Array(position.count * 2);
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const normal = new THREE.Vector3();
+  const point = new THREE.Vector3();
+  for (let t = 0; t + 2 < position.count; t += 3) {
+    a.fromBufferAttribute(position, t);
+    b.fromBufferAttribute(position, t + 1);
+    c.fromBufferAttribute(position, t + 2);
+    normal.subVectors(c, b).cross(a.clone().sub(b));
+    if (normal.lengthSq() < 1e-20) normal.set(0, 1, 0);
+    normal.normalize();
+    const ax = Math.abs(normal.x);
+    const ay = Math.abs(normal.y);
+    const az = Math.abs(normal.z);
+    for (let k = 0; k < 3; k++) {
+      point.fromBufferAttribute(position, t + k);
+      let u: number;
+      let v: number;
+      if (ay >= ax && ay >= az) {
+        if (ay < 0.97 && ax > az) {
+          u = -point.z * sign(normal.x);
+          v = -point.x * sign(normal.x);
+        } else if (ay < 0.97) {
+          u = point.x * sign(normal.z);
+          v = -point.z * sign(normal.z);
+        } else {
+          u = point.x;
+          v = normal.y > 0 ? -point.z : point.z;
+        }
+      } else if (ax >= az) {
+        u = -point.z * sign(normal.x);
+        v = point.y;
+      } else {
+        u = point.x * sign(normal.z);
+        v = point.y;
+      }
+      uv[(t + k) * 2] = u / width;
+      uv[(t + k) * 2 + 1] = v / height;
+    }
+  }
+  geometry.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+}
+
 function buildPiece(piece: ShapePiece): THREE.BufferGeometry {
   // Imported models already carry their own normals and colors.
   if (piece.shape.kind === "model") return decodeModel(piece.shape);
 
-  // Baked zones come with the normals Blender computed: creasing them again would undo its work.
+  // Baked zones and textured models come with the normals Blender computed: creasing them again
+  // would undo its work.
   const raw = buildPrimitive(piece.shape);
+  const kept = piece.shape.kind === "baked" || piece.shape.kind === "mapped" || piece.shape.kind === "skinned";
   const crease = piece.faceted
     ? FACETED_ANGLE
     : piece.shape.kind === "polygons"
       ? THREE.MathUtils.degToRad(piece.shape.crease)
       : CREASE_ANGLE;
-  const geometry = piece.shape.kind === "baked" ? raw : toCreasedNormals(raw, crease);
+  const geometry = kept ? raw : toCreasedNormals(raw, crease);
   if (geometry !== raw) raw.dispose();
   geometry.applyMatrix4(pieceMatrix(piece));
   repairNormals(geometry);
   const painted = piece.shape.kind === "polygons" && piece.shape.colors !== undefined;
+  const surface = piece.surface ? getSurface(piece.surface) : null;
+  const ownLayout = piece.shape.kind === "mapped" || piece.shape.kind === "skinned";
+  const skinned = piece.shape.kind === "skinned";
   for (const name of Object.keys(geometry.attributes)) {
-    if (name !== "position" && name !== "normal" && !(painted && name === "color")) geometry.deleteAttribute(name);
+    const keep =
+      name === "position" ||
+      name === "normal" ||
+      (painted && name === "color") ||
+      (ownLayout && surface && name === "uv") ||
+      (skinned && (name === "skinIndex" || name === "skinWeight"));
+    if (!keep) geometry.deleteAttribute(name);
   }
+  if (surface && !ownLayout) projectTexture(geometry, surface.size ?? [1, 1]);
   if (painted) return geometry;
 
   const color = piece.color
@@ -496,6 +596,23 @@ export function buildGeometry(shape: BlockShape): THREE.BufferGeometry {
 
   const ordered = [...slots.keys()].sort((a, b) => a - b);
   const parts = ordered.flatMap((slot) => slots.get(slot)!);
+  // Merging needs the same attributes everywhere: untextured pieces of a textured block get empty
+  // coordinates, and rigid pieces of a skinned one follow the first bone.
+  if (parts.some((part) => part.getAttribute("uv"))) {
+    for (const part of parts) {
+      if (!part.getAttribute("uv")) part.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(part.getAttribute("position").count * 2), 2));
+    }
+  }
+  if (parts.some((part) => part.getAttribute("skinIndex"))) {
+    for (const part of parts) {
+      if (part.getAttribute("skinIndex")) continue;
+      const count = part.getAttribute("position").count;
+      const weights = new Float32Array(count * 4);
+      for (let i = 0; i < count; i++) weights[i * 4] = 1;
+      part.setAttribute("skinIndex", new THREE.BufferAttribute(new Uint16Array(count * 4), 4));
+      part.setAttribute("skinWeight", new THREE.BufferAttribute(weights, 4));
+    }
+  }
   const merged = mergeGeometries(parts);
   if (!merged) throw new Error("Falha ao montar o bloco");
 
@@ -513,7 +630,7 @@ export function buildGeometry(shape: BlockShape): THREE.BufferGeometry {
   return merged;
 }
 
-const SURFACES: Record<BlockFinish, THREE.MeshPhysicalMaterialParameters> = {
+const FINISH_LOOK: Record<BlockFinish, THREE.MeshPhysicalMaterialParameters> = {
   matte: { roughness: 0.72, metalness: 0 },
   gloss: { roughness: 0.24, metalness: 0.08 },
   metal: { roughness: 0.34, metalness: 0.78 },
@@ -528,17 +645,18 @@ const SURFACES: Record<BlockFinish, THREE.MeshPhysicalMaterialParameters> = {
 /** Finishes that need the physical material, which costs more to draw. */
 const PHYSICAL = new Set<BlockFinish>(["paint", "tint"]);
 
-function surfaceMaterial(finish: BlockFinish, color?: string | number): THREE.MeshStandardMaterial {
-  const parameters = { vertexColors: true, ...(color === undefined ? {} : { color }), ...SURFACES[finish] };
+function finishMaterial(finish: BlockFinish, color?: string | number): THREE.MeshStandardMaterial {
+  const parameters = { vertexColors: true, ...(color === undefined ? {} : { color }), ...FINISH_LOOK[finish] };
   return PHYSICAL.has(finish) ? new THREE.MeshPhysicalMaterial(parameters) : new THREE.MeshStandardMaterial(parameters);
 }
 
 let sharedFixed: THREE.Material[] | null = null;
+const sharedSurfaces = new Map<number, THREE.Material>();
 
 function createFixedMaterials(): THREE.Material[] {
   return FINISHES.map((finish) => {
     if (finish === "glow") return new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
-    return surfaceMaterial(finish);
+    return finishMaterial(finish);
   });
 }
 
@@ -550,16 +668,58 @@ function fixedMaterials(): THREE.Material[] {
   return sharedFixed;
 }
 
+/** Fills the slots a block does not use, so a list of materials can stay indexed by slot. */
+const unused = new THREE.MeshBasicMaterial({ visible: false });
+unused.userData.shared = true;
+unused.userData.unused = true;
+
+/** True for the slots that hold a real material, not a gap. */
+export const isUsedMaterial = (material: THREE.Material) => !material.userData.unused;
+
+function slotMaterial(slot: number, color: string | number, ownFixed: boolean): THREE.Material {
+  const { surface, fixed } = slotInfo(slot);
+  if (!surface) return fixed ? (ownFixed ? createFixedMaterials() : fixedMaterials())[Math.floor(slot / 2)] : finishMaterial(slotInfo(slot).finish, color);
+  if (!fixed) return createSurfaceMaterial(surface, color);
+  if (ownFixed) return createSurfaceMaterial(surface);
+  let material = sharedSurfaces.get(slot);
+  if (!material) {
+    material = createSurfaceMaterial(surface);
+    material.userData.shared = true;
+    sharedSurfaces.set(slot, material);
+  }
+  return material;
+}
+
 /**
- * One material for each slot. Fixed colors are shared by all parts to keep scenes light;
- * pass `ownFixed` for something that changes them, like the translucent placement preview.
+ * Adds the materials of the textured slots `geometry` uses to a list made by createBlockMaterials,
+ * in place, so a mesh whose geometry changed draws all of it.
+ */
+export function fitBlockMaterials(
+  materials: THREE.Material[],
+  geometry: THREE.BufferGeometry,
+  color: string | number,
+  options: { ownFixed?: boolean } = {},
+): void {
+  for (const { materialIndex = 0 } of geometry.groups) {
+    if (materialIndex < SURFACE_SLOTS || (materials[materialIndex] && isUsedMaterial(materials[materialIndex]))) continue;
+    for (let slot = materials.length; slot < materialIndex; slot++) materials[slot] = unused;
+    materials[materialIndex] = slotMaterial(materialIndex, color, options.ownFixed ?? false);
+  }
+}
+
+/**
+ * One material for each finish slot, plus the textured slots `geometry` uses. Fixed colors are
+ * shared by all parts to keep scenes light; pass `ownFixed` for something that changes them, like
+ * the translucent placement preview.
  */
 export function createBlockMaterials(
   color: string | number,
-  options: { ownFixed?: boolean } = {},
+  options: { ownFixed?: boolean; geometry?: THREE.BufferGeometry } = {},
 ): THREE.MeshStandardMaterial[] {
   const fixed = options.ownFixed ? createFixedMaterials() : fixedMaterials();
-  return FINISHES.flatMap((finish, index) => [surfaceMaterial(finish, color), fixed[index]]) as THREE.MeshStandardMaterial[];
+  const materials: THREE.Material[] = FINISHES.flatMap((finish, index) => [finishMaterial(finish, color), fixed[index]]);
+  if (options.geometry) fitBlockMaterials(materials, options.geometry, color, options);
+  return materials as THREE.MeshStandardMaterial[];
 }
 
 export function disposeBlockMaterials(materials: THREE.Material[]): void {

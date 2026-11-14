@@ -199,7 +199,7 @@ function drawMedian(asm: Assembler, ground: Ground, rng: Rng, street: Street, fr
   ground.rim(counterclockwise, top + MEDIAN_RISE, top, Surface.curb, false);
   for (let spot = from + 4; spot < to - 3; spot += 10) {
     const [x, z] = street.at(spot).point;
-    buildTree(asm, rng.fork(`median ${Math.round(x)} ${Math.round(z)}`), { style, position: [x, top + MEDIAN_RISE, z], kind: "leafy", size: "small" });
+    buildTree(asm, rng.fork(`median ${Math.round(x)} ${Math.round(z)}`), { style, light: true, position: [x, top + MEDIAN_RISE, z], kind: "leafy", size: "small" });
   }
 }
 
@@ -271,7 +271,7 @@ function placePark(asm: Assembler, ground: Ground, rng: Rng, inner: Point[], sho
   ground.flat(shown, top, Surface.grass);
   const area = polygonArea(inner);
   spotsInside(inner, rng.fork("trees"), Math.min(40, Math.round(area / 42)), 3.6, 1.6).forEach(([x, z], index) => {
-    buildTree(asm, rng.fork(`park tree ${index}`), { style, position: [x, top, z], kind: rng.chance(0.75) ? "leafy" : "pine" });
+    buildTree(asm, rng.fork(`park tree ${index}`), { style, light: true, position: [x, top, z], kind: rng.chance(0.75) ? "leafy" : "pine" });
   });
   if (!kit.bench) return;
   spotsInside(inner, rng.fork("benches"), Math.min(6, Math.round(area / 160)), 6, 2).forEach(([x, z], index) => {
@@ -317,7 +317,7 @@ function dressSidewalk(asm: Assembler, rng: Rng, curb: Point[], role: Role, sett
   for (let spot = rng.range(4, 9); spot < line.total; spot += 10) {
     if (!free(spot) || !rng.chance(0.7) || lamps.some((lamp) => Math.abs(lamp - spot) < 3)) continue;
     const { at } = offCurb(spot, 0.95);
-    buildTree(asm, rng.fork(`sidewalk ${Math.round(spot)}`), { style, position: [at[0], kit.sidewalkTop, at[1]], kind: "leafy", size: "small" });
+    buildTree(asm, rng.fork(`sidewalk ${Math.round(spot)}`), { style, light: true, position: [at[0], kit.sidewalkTop, at[1]], kind: "leafy", size: "small" });
   }
 }
 
@@ -329,7 +329,7 @@ function placeBuildings(asm: Assembler, ground: Ground, rng: Rng, inner: Point[]
   if (court) {
     ground.flat(court, top, Surface.grass);
     spotsInside(court, rng.fork("court"), Math.min(14, Math.round(polygonArea(court) / 40)), 3.4, 1).forEach(([x, z], index) => {
-      buildTree(asm, rng.fork(`court tree ${index}`), { style, position: [x, top, z], kind: "leafy" });
+      buildTree(asm, rng.fork(`court tree ${index}`), { style, light: true, position: [x, top, z], kind: "leafy" });
     });
   }
 
@@ -339,21 +339,21 @@ function placeBuildings(asm: Assembler, ground: Ground, rng: Rng, inner: Point[]
   spotsInside(inner, rng.fork("gaps"), Math.min(16, Math.round(polygonArea(inner) / 40)), 3.4, 1.2)
     .filter((spot) => !isOnLot(spot, lots, lotWidth + 2, LOT + 2) && !(court && contains(court, spot)))
     .forEach(([x, z], index) => {
-      buildTree(asm, rng.fork(`gap tree ${index}`), { style, position: [x, top, z], kind: "leafy", size: "small" });
+      buildTree(asm, rng.fork(`gap tree ${index}`), { style, light: true, position: [x, top, z], kind: "leafy", size: "small" });
     });
 
   lots.forEach((lot, index) => {
     const lotRng = rng.fork(`lot ${index}`);
     if (lotRng.chance(0.05)) {
-      buildTree(asm, lotRng.fork("tree"), { style, position: [lot.center[0], top, lot.center[1]], kind: "leafy" });
+      buildTree(asm, lotRng.fork("tree"), { style, light: true, position: [lot.center[0], top, lot.center[1]], kind: "leafy" });
       return;
     }
     const start = asm.parts.length;
     const origin: Vec3 = [0, 0, 0];
-    if (role === "houses") buildHouse(asm, lotRng, { style, position: origin, yawSteps: 0 });
+    if (role === "houses") buildHouse(asm, lotRng, { style, position: origin, yawSteps: 0, lot: [lotWidth, LOT] });
     else {
       const maxFloors = role === "shops" ? Math.min(5, tallest) : Math.max(3, Math.round(tallest * (1 - where * 0.55)));
-      buildBuilding(asm, lotRng, { style, position: origin, yawSteps: 0, minFloors: 2, maxFloors });
+      buildBuilding(asm, lotRng, { style, position: origin, yawSteps: 0, minFloors: 2, maxFloors, lot: [LOT, LOT] });
     }
     placeOnBlock(asm, start, lot.center, top, [-lot.back[0], -lot.back[1]]);
   });
@@ -389,7 +389,14 @@ function drawBase(ground: Ground, outline: Point[], settings: StreetCitySettings
   ground.mesh.face(edge.map(([x, z]) => ground.mesh.vertex(x, 0, z)), Surface.side);
 }
 
-const materialsOf = (look: Look): ShapeMaterial[] => [look.asphalt, look.line, look.walk, look.curb, look.grass, look.paved, look.side].map((color) => ({ color }));
+/** Realista paves its streets with photographed asphalt, concrete, grass and brick; paint stays plain. */
+const REAL_GROUND: (string | null)[] = ["asphalt", null, "sidewalk", "concrete", "grass", "cobblestone", "concrete"];
+
+const materialsOf = (look: Look, style: ArtStyle): ShapeMaterial[] =>
+  [look.asphalt, look.line, look.walk, look.curb, look.grass, look.paved, look.side].map((color, index) => {
+    const texture = style === "realistic" ? REAL_GROUND[index] : null;
+    return texture ? { color: "#ffffff", texture } : { color };
+  });
 
 export function buildStreetCity(asm: Assembler, rng: Rng, settings: StreetCitySettings): void {
   const look = LOOKS[settings.style];
@@ -409,7 +416,7 @@ export function buildStreetCity(asm: Assembler, rng: Rng, settings: StreetCitySe
     vertices: ground.mesh.vertices,
     faces: ground.mesh.faces,
     faceMaterials: ground.mesh.faceMaterials,
-    materials: materialsOf(look),
+    materials: materialsOf(look, settings.style),
     smoothAngle: 0,
     sockets: [],
   };

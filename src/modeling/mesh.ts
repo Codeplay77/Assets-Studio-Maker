@@ -168,7 +168,7 @@ export function orientOutward(mesh: PolyMesh): PolyMesh {
 }
 
 function sameMaterial(a: ShapeMaterial, b: ShapeMaterial): boolean {
-  return a.color === b.color && a.shade === b.shade && a.finish === b.finish;
+  return a.color === b.color && a.shade === b.shade && a.finish === b.finish && a.texture === b.texture;
 }
 
 function materialIndex(materials: ShapeMaterial[], wanted: ShapeMaterial): number {

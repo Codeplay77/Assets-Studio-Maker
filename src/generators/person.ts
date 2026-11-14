@@ -1,6 +1,7 @@
 import type { ArtStyle } from "../blocks/styles";
 import type { Vec3 } from "../core/types";
 import type { AssembledPart, Assembler } from "./assembler";
+import { buildRealPerson } from "./realPerson";
 import type { Rng } from "./rng";
 
 export const SKIN_TONES = ["#f6d7bd", "#eec4a0", "#e0ac83", "#c68c5e", "#a06c44", "#7a4e30", "#573622"];
@@ -247,6 +248,11 @@ export function buildPerson(asm: Assembler, rng: Rng, options: PersonOptions = {
 
   const sex = resolveSex(options, rng.fork("sex"));
   const age = (chosen(options.age) as Age | undefined) ?? rng.fork("age").pick<Age>(["adult", "adult", "adult", "adult", "teen", "child", "elder"]);
+  // Realista people are MakeHuman bodies that bend, not blocks.
+  if ((options.style ?? "realistic") === "realistic") {
+    buildRealPerson(asm, rng, options, sex, age);
+    return;
+  }
   const skinIndex = chosen(options.skin);
   const skin = skinIndex ? SKIN_TONES[Number(skinIndex)] : rng.fork("skin").pick(SKIN_TONES);
   const stature = STATURE[age];

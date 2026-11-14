@@ -49,7 +49,7 @@ IA também pode modelar por você, pelo protocolo MCP.
   (carros, karts, motos, caminhões, ônibus e carretas), prédio, casa, interior (casa, apartamento,
   escritório, loja, restaurante ou um cômodo, já mobiliados), árvore, cidade (com ruas irregulares,
   orgânicas ou em grade) e mapa
-- 162 animações prontas em CC0 para as pessoas geradas, em todos os estilos, com prévia no editor
+- 201 animações prontas para as pessoas geradas, em todos os estilos, com prévia no editor: 162 do Mesh2Motion (CC0) e 39 feitas para o editor, 12 danças (samba, forró, axé, frevo, passinho e outras) e 27 golpes de luta (socos, chutes, esquivas, defesas, golpes recebidos e capoeira)
   e exportação com esqueleto
 - Veículos prontos para jogo: rodas que giram, caixa de colisão e importação direta no Godot
 - Modelagem livre: comece de uma forma básica ou de qualquer peça pronta e edite faces, arestas e
@@ -88,7 +88,7 @@ um boneco de blocos nunca aparece ao lado de um carro realista.
 | Estilo | Como é |
 | --- | --- |
 | **Low poly** | Polígonos à vista, leve e colorido. Usa os modelos CC0 e o personagem low poly |
-| **Realista** | Proporções reais, pintura com verniz, vidro fumê com o interior à vista, freios atrás dos raios e rodado duplo em caminhões, carretas e ônibus |
+| **Realista** | Perto do real: pessoas do MakeHuman com pele, roupa e cabelo de verdade, que dobram nas animações; texturas fotografadas (tijolo, telha, asfalto, madeira, tecido, grama) no tamanho real; móveis, plantas e árvores escaneados do Poly Haven; prédios residenciais, antigos e comerciais com sacadas, molduras e vidro espelhado; luz de céu de verdade; e veículos com pintura com verniz, vidro fumê e rodado duplo |
 | **Blocos** | Tudo feito de cubos, inclusive pessoas, carros, móveis, cidades e mapas |
 | **Arcade** | Brinquedos: veículos curtos, redondos e de rodas grandes, com pintura brilhante, no visual do jogo Codeplay in Kart |
 
@@ -98,7 +98,8 @@ ainda deixa trocar carroceria, rodas, aerofólio, capacete, piloto e macacão. C
 separada, então também dá para mudar a cor depois, no painel da direita.
 
 Depois clique em um tipo de modelo. As opções abrem no painel da direita: na **Pessoa**, sexo,
-idade, porte, altura, pele, cabelo, roupa, barba, óculos, chapéu e mochila. O que ficar em
+idade, porte, altura, pele, cabelo, roupa, barba, óculos, chapéu e mochila (no Realista, a pessoa é
+um corpo inteiro do MakeHuman que dobra nas animações, sem barba, óculos e mochila). O que ficar em
 **Sortear** é decidido pela semente. Clique em **Gerar** e, a partir daí, cada opção alterada
 atualiza o mesmo modelo sem mudar o resto. Cada mudança é um Ctrl+Z.
 
@@ -132,7 +133,7 @@ mão: cada parede tem 1 m e se encaixa na próxima pelos lados. Os móveis pront
 | Estilo | Móveis |
 | --- | --- |
 | **Low poly** | Furniture Kit da Kenney |
-| **Realista** | Quaternius e Poly Haven, mais bancadas, TV, monitor e box feitos no editor |
+| **Realista** | Modelos do Poly Haven com as texturas originais, mais camas, guarda-roupa, cozinha, banheiro e lavanderia feitos no editor com texturas fotografadas |
 | **Blocos** | Os móveis da Kenney refeitos em cubos do tamanho dos que formam as pessoas |
 | **Arcade** | Móveis de brinquedo próprios do editor, arredondados e com pintura brilhante |
 
@@ -175,7 +176,7 @@ variação, faça uma cópia independente nesse mesmo painel.
 ## Animar
 
 Na aba **Animar**, escolha o personagem e clique numa animação para ver o personagem se mexer. São
-162 animações prontas, em categorias como andar e correr, luta, espada, armas, magia, gestos,
+201 animações prontas, em categorias como andar e correr, luta, espada, armas, magia, gestos,
 dança, tarefas, nadar e escalar. Marque as que o personagem deve levar no arquivo: a escolha fica
 salva no projeto e cada mudança pode ser desfeita com Ctrl+Z. Nas animações que andam para algum
 lugar, **Sem sair do lugar** mantém o personagem parado na prévia.
@@ -183,7 +184,8 @@ lugar, **Sem sair do lugar** mantém o personagem parado na prévia.
 Funciona com qualquer pessoa do gerador, nos quatro estilos. O editor reconhece os blocos do corpo
 (quadril, tronco, pescoço, cabeça, braços, antebraços, mãos, coxas, canelas e sapatos), monta o
 esqueleto pelos encaixes, e o resto (rosto, cabelo, chapéu, saia, mochila) acompanha o osso onde
-está encaixado. As animações se ajustam à altura e às proporções de cada personagem.
+está encaixado. As animações se ajustam à altura e às proporções de cada personagem. As pessoas do
+Realista também mexem os dedos: fecham a mão para socar, seguram a pistola e gesticulam.
 
 Ao exportar, cada personagem com animações vira uma malha com esqueleto. Os ossos têm os nomes do
 manequim da Unreal (`pelvis`, `spine_03`, `upperarm_l`...), que o Godot reconhece no
@@ -199,7 +201,8 @@ Clique em **Exportar** (ou Ctrl+E) e escolha:
 - **Juntar em uma malha só**, mais leve no jogo porque vira uma peça única
 - **Centralizar na origem**, que coloca a base do modelo no ponto zero
 
-As cores vão nos vértices do modelo, então não há textura para copiar junto com o arquivo.
+As cores vão nos vértices do modelo. As texturas do estilo Realista vão dentro do próprio `.glb`,
+em JPEG, com cor, relevo e o mapa de oclusão, rugosidade e metal que o glTF usa.
 
 ### Veículos prontos para jogo
 
@@ -363,10 +366,12 @@ guarda o projeto e aplica todas as alterações.
 | `src/mcp/` | Ferramentas do agente de IA |
 | `src-tauri/src/document.rs` | O projeto, os comandos e o histórico de desfazer |
 | `src-tauri/src/mcp.rs` | Servidor MCP: conexão, chave de acesso e protocolo |
-| `public/models/` | Pacotes de modelos: `pack.bin` (biblioteca), `interior.bin` (móveis) e `vehicles.bin` (veículos) |
+| `public/models/` | Pacotes de modelos: `pack.bin` (biblioteca), `interior.bin` (móveis), `vehicles.bin` (veículos), `realista.bin` (modelos do Poly Haven) e `pessoas.bin` (pessoas do Realista) |
+| `public/textures/` | As texturas do Realista, uma pasta por material com `color`, `normal` e `arm` |
+| `public/environments/` | O céu que ilumina as cenas Realistas |
 | `public/animations/` | Pacote de animações |
 | `scripts/` | Importadores que geram os pacotes de modelos e de animações |
-| `tools/blender/` | Scripts do Blender que modelam os veículos e preparam os móveis do Poly Haven |
+| `tools/blender/` | Scripts do Blender que modelam os veículos, preparam os modelos do Poly Haven e montam as pessoas do Realista |
 
 Toda forma criada é uma malha de polígonos guardada no projeto, com o id `shape.N`, que funciona
 como qualquer bloco. A interface e o agente usam as mesmas operações, em
@@ -400,21 +405,58 @@ deste README e no [CREDITS.md](CREDITS.md).
 
 ### Atualizar os móveis
 
-Os móveis têm um pacote próprio, `public/models/interior.bin`. O primeiro comando baixa os pacotes
-da Kenney, do Quaternius e do Poly Haven numa pasta (cerca de 130 MB), o segundo reduz os modelos
-do Poly Haven no Blender e o terceiro gera o pacote:
+Os móveis da Kenney (Low poly e Blocos) têm um pacote próprio, `public/models/interior.bin`:
 
 ```powershell
 node scripts/download-interior.ts <pasta>
-blender -b --factory-startup --python tools/blender/prepare_polyhaven.py -- <pasta>/polyhaven <pasta>/polyhaven-prepared
 node scripts/import-interior.ts <pasta>
 pnpm catalog
 ```
 
-Para conferir os modelos antes de usar, acrescente `--debug <outra pasta>` ao terceiro comando:
+Para conferir os modelos antes de usar, acrescente `--debug <outra pasta>` ao segundo comando:
 cada um sai também como OBJ com as cores, para abrir no Blender. Os nomes em português e a forma de
 prender cada peça (no chão, na parede ou no teto) ficam em `scripts/interior-names.ts`. Um modelo
 sem nome ali aparece com o nome do arquivo e um aviso.
+
+### Atualizar o Realista
+
+As texturas, os modelos do Poly Haven e o céu do Realista vêm de três comandos. O primeiro baixa
+tudo numa pasta (cerca de 1,6 GB, porque as árvores escaneadas são grandes; o Blender chega a usar 16 GB de memória nelas); o segundo reduz cada
+modelo no Blender a um tamanho de jogo sem perder as texturas, separa as variações que vêm lado a
+lado num arquivo e faz uma cópia leve das plantas e pedras para mapas e cidades; o terceiro gera
+`public/models/realista.bin`, `public/textures/` e o catálogo:
+
+```powershell
+node scripts/download-realistic.ts <pasta>
+blender -b --factory-startup --python tools/blender/prepare_polyhaven.py -- <pasta> <pasta>/preparados
+node scripts/import-realistic.ts <pasta> <pasta>/preparados
+pnpm catalog
+```
+
+As texturas que se repetem (paredes, pisos, ruas, terreno) estão em `src/blocks/surfaces.ts`, com o
+tamanho real que cada foto cobre. Os modelos, seus nomes em português e onde cada um se prende estão
+em `scripts/realistic-names.ts`. O terceiro comando também escreve, na pasta dos preparados, a lista
+de autores para os créditos.
+
+### Atualizar as pessoas do Realista
+
+As pessoas do Realista são montadas no Blender 5.1 com o [MPFB](https://extensions.blender.org/add-ons/mpfb/)
+e o pacote [makehuman system assets](https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html).
+Para não mexer no Blender do dia a dia, instale o MPFB numa pasta de usuário separada e descompacte
+o pacote dentro da pasta de dados dele:
+
+```bash
+export BLENDER_USER_RESOURCES=<pasta>/blender_user
+blender --factory-startup --command extension install-file -r user_default -e <mpfb.zip>
+# descompacte makehuman_system_assets_cc0.zip em <pasta>/blender_user/extensions/.user/user_default/mpfb/data
+blender --factory-startup -b --python tools/blender/make_people.py -- <pasta>/pessoas
+node scripts/import-people.ts <pasta>/pessoas
+pnpm catalog
+```
+
+Os corpos, as roupas de cada um e os cabelos estão no início de `tools/blender/make_people.py`. Para
+refazer só alguns corpos, passe os nomes depois da pasta (`-- <pasta>/pessoas homem,mulher`). O
+gerador de Pessoa escolhe entre eles em `src/generators/realPerson.ts`.
 
 ### Atualizar os veículos
 
@@ -436,13 +478,26 @@ ver as versões Low poly e Blocos.
 ### Atualizar as animações
 
 As animações ficam em `public/animations/human.bin`, com os nomes em português em
-`src/animation/library.generated.ts`. Para gerar de novo a partir dos arquivos do Mesh2Motion:
+`src/animation/library.generated.ts`. Elas vêm dos arquivos do Mesh2Motion e das danças e golpes do
+editor, que o Blender monta sobre o mesmo esqueleto. Para gerar de novo:
 
 ```powershell
-node scripts/import-animations.ts <pasta com human-base-animations.glb e human-addon-animations.glb>
+blender --factory-startup -b --python tools/blender/make_dances.py -- <pasta do Mesh2Motion>/human-base-animations.glb <pasta>/dancas.glb
+blender --factory-startup -b --python tools/blender/make_combat.py -- <pasta do Mesh2Motion>/human-base-animations.glb <pasta>/combate.glb
+node scripts/import-animations.ts <pasta com human-base-animations.glb e human-addon-animations.glb> <pasta>/dancas.glb <pasta>/combate.glb
 ```
 
-Um clipe novo precisa de um nome em português na tabela `NAMES` do script.
+Cada dança ou golpe é uma lista de poses-chave, no fim do seu script: onde fica cada pé, para onde
+vão as mãos em relação ao peito, para onde apontam cotovelos e joelhos, quanto giram quadril,
+tronco, ombros e cabeça e quanto cada mão está fechada. Pernas e braços seguem essas posições por
+IK (`tools/blender/poser.py`, comum aos dois scripts). Nas danças, um pé que muda de lugar é
+levantado no meio do caminho, para não deslizar. Nos golpes, para não parecerem robóticos, cada
+valor segue uma curva suave entre as poses, o golpe acelera até o impacto, o quadril sai antes, a
+cabeça chega depois e a respiração nunca deixa o corpo parado. Todos os golpes começam e terminam
+na mesma guarda, para um jogo poder emendar um no outro. Com `--previa <pasta>`, o
+`make_combat.py` também fotografa o manequim em alguns quadros de cada golpe, de frente e de lado. Um clipe novo precisa de um nome em português na tabela `NAMES` do
+importador. Ações que acontecem uma vez (ataques, abrir baú, morrer) ficam na lista `ONCE`, para não
+repetirem no jogo.
 
 ## Roteiro
 
@@ -451,7 +506,7 @@ Um clipe novo precisa de um nome em português na tabela `NAMES` do script.
 3. **Agente de IA:** feito, com servidor MCP local e captura do viewport
 4. **Modelagem livre:** feita, com faces, arestas, pontos, furos, chanfros e escultura, pela
    interface e pelo agente
-5. **Animação:** feita, com esqueleto criado a partir dos encaixes, 162 animações prontas, prévia
+5. **Animação:** feita, com esqueleto criado a partir dos encaixes, 201 animações prontas, prévia
    e exportação com esqueleto
 6. **Interiores:** feitos, com móveis nos quatro estilos e o gerador Interior
 7. **Linha do tempo:** ajuste simples de poses e novas animações próprias do editor
@@ -503,32 +558,21 @@ vértice e as escalas foram levadas a medidas reais.
 | Blocky Characters | 2.0 | [OpenGameArt](https://opengameart.org/content/blocky-characters) |
 | Furniture Kit | 1.0 | [OpenGameArt](https://opengameart.org/content/furniture-kit) |
 
-**[Quaternius](https://quaternius.com)**: móveis e objetos de casa do estilo Realista, baixados
-das coleções que o próprio autor publica no Poly Pizza, cada modelo com a licença CC0 1.0.
-
-| Pacote | Modelos | Origem |
-| --- | --- | --- |
-| Ultimate House Interior Pack | 82 | [Poly Pizza](https://poly.pizza/bundle/Ultimate-House-Interior-Pack-2SXnFbwFzm) |
-| Furniture Pack | 19 | [Poly Pizza](https://poly.pizza/bundle/Furniture-Pack-pgvx8Zkq8v) |
-
-**[Poly Haven](https://polyhaven.com)**: 78 móveis e objetos do estilo Realista, todos CC0,
-reduzidos no Blender a até 2.600 triângulos. Feitos por James Ray Cock (14 modelos), Kirill
-Sannikov (13), Ulan Cabanilla (9), Kuutti Siitonen (8), Ethan Place (3), Fran Calvente (3), Gabriel
-Radić (2), Rico Cilliers (2), Yann Kervran (2), Adam Nekola, Amal Kumar, Amin, Aron Łyczek,
-Arrangemonk, Benny Weimer, Caspian Fortune, Dairon Sanchez, Fernando Quinn, Jake Mobley, Joe
-Seabuhr, Jorge Camacho, Maximilian Schuster, ParzivalCG, Patrik Pangerl, PeterM, PierreB3D,
-Plat251, Rahul Chaudhary, Rob Tuytel, Sean Buckley, Serhii Khromov, Slinc, Thomas Paul Mouilleron e
-Vibrant Nordic.
+**[Poly Haven](https://polyhaven.com)**: tudo o que o estilo Realista traz de fora, todo CC0:
+145 modelos escaneados com as texturas originais (móveis, plantas, árvores, pedras e objetos de
+rua), 39 texturas de materiais e o céu que ilumina as cenas. Os modelos são de Rico Cilliers (32 modelos), James Ray Cock (23), Kirill Sannikov (19), Rob Tuytel (17), Ulan Cabanilla (12), Kuutti Siitonen (9), Jenelle van Heerden (5), Yann Kervran (5), Amal Kumar (3), Ethan Place (3), Fran Calvente (3), Amin (2), Aron Łyczek (2), Benny Weimer (2), Dario Barresi (2), Gabriel Radić (2), Josh Dean (2), PierreB3D (2), Adam Nekola, Alexander Otterbeck, Arrangemonk, Caspian Fortune, Dairon Sanchez, Fernando Quinn, Gonçalo Felício, Greg Zaal, GurJas Studios, Jake Mobley, Joe Seabuhr, Jorge Camacho, Kless Gyzen, Luca B, Maximilian Schuster, Monsta3D, ParzivalCG, Patrik Pangerl, PeterM, Plat251, Rahul Chaudhary, Raunox, SV Garip, Sean Buckley, Serhii Khromov, Slinc, Thomas Paul Mouilleron e Vibrant Nordic.
 
 <details>
-<summary>Os 78 modelos do Poly Haven e seus autores</summary>
+<summary>Os 145 modelos e as 39 texturas do Poly Haven, com seus autores</summary>
 
 | Modelo | Autor | Página |
 | --- | --- | --- |
 | Alarm Clock 01 | Yann Kervran, James Ray Cock | [alarm_clock_01](https://polyhaven.com/a/alarm_clock_01) |
+| Anthurium Botany 01 | Rob Tuytel, Rico Cilliers | [anthurium_botany_01](https://polyhaven.com/a/anthurium_botany_01) |
 | Arm Chair 01 | Kirill Sannikov | [ArmChair_01](https://polyhaven.com/a/ArmChair_01) |
 | Bar Chair Round 01 | Dairon Sanchez | [bar_chair_round_01](https://polyhaven.com/a/bar_chair_round_01) |
 | Boombox | Thomas Paul Mouilleron | [boombox](https://polyhaven.com/a/boombox) |
+| Calathea Orbifolia 01 | Rob Tuytel, Rico Cilliers | [calathea_orbifolia_01](https://polyhaven.com/a/calathea_orbifolia_01) |
 | Cardboard Box 01 | Rahul Chaudhary | [cardboard_box_01](https://polyhaven.com/a/cardboard_box_01) |
 | Cash Register 01 | Joe Seabuhr | [CashRegister_01](https://polyhaven.com/a/CashRegister_01) |
 | Ceiling Fan | Ulan Cabanilla | [ceiling_fan](https://polyhaven.com/a/ceiling_fan) |
@@ -537,42 +581,59 @@ Vibrant Nordic.
 | Ceramic Vase 03 | James Ray Cock | [ceramic_vase_03](https://polyhaven.com/a/ceramic_vase_03) |
 | Chandelier 01 | Kirill Sannikov | [Chandelier_01](https://polyhaven.com/a/Chandelier_01) |
 | Chinese Screen Panels | Kirill Sannikov | [chinese_screen_panels](https://polyhaven.com/a/chinese_screen_panels) |
+| Classic Laptop | Arrangemonk | [classic_laptop](https://polyhaven.com/a/classic_laptop) |
 | Classic Console 01 | Kirill Sannikov | [ClassicConsole_01](https://polyhaven.com/a/ClassicConsole_01) |
 | Classic Nightstand 01 | Kirill Sannikov | [ClassicNightstand_01](https://polyhaven.com/a/ClassicNightstand_01) |
-| Classic Laptop | Arrangemonk | [classic_laptop](https://polyhaven.com/a/classic_laptop) |
-| Coffee Table 01 | Fernando Quinn | [CoffeeTable_01](https://polyhaven.com/a/CoffeeTable_01) |
 | Coffee Table Round 01 | Ulan Cabanilla | [coffee_table_round_01](https://polyhaven.com/a/coffee_table_round_01) |
+| Coffee Table 01 | Fernando Quinn | [CoffeeTable_01](https://polyhaven.com/a/CoffeeTable_01) |
 | Desk Lamp Arm 01 | Yann Kervran, Kuutti Siitonen | [desk_lamp_arm_01](https://polyhaven.com/a/desk_lamp_arm_01) |
 | Dining Chair 02 | James Ray Cock | [dining_chair_02](https://polyhaven.com/a/dining_chair_02) |
+| Dining Table | Aron Łyczek | [dining_table](https://polyhaven.com/a/dining_table) |
 | Drawer Cabinet | Ulan Cabanilla | [drawer_cabinet](https://polyhaven.com/a/drawer_cabinet) |
 | Electric Stove | Kuutti Siitonen | [electric_stove](https://polyhaven.com/a/electric_stove) |
 | Fancy Picture Frame 01 | Rob Tuytel, Rico Cilliers | [fancy_picture_frame_01](https://polyhaven.com/a/fancy_picture_frame_01) |
 | Fire Alarm | Slinc | [fire_alarm](https://polyhaven.com/a/fire_alarm) |
+| Folding Wooden Stool | Ulan Cabanilla | [folding_wooden_stool](https://polyhaven.com/a/folding_wooden_stool) |
 | Gaming Console | Sean Buckley | [gaming_console](https://polyhaven.com/a/gaming_console) |
 | Gothic Bed 01 | Kirill Sannikov | [GothicBed_01](https://polyhaven.com/a/GothicBed_01) |
+| Gothic Cabinet 01 | Kirill Sannikov | [GothicCabinet_01](https://polyhaven.com/a/GothicCabinet_01) |
 | Gothic Commode 01 | Kirill Sannikov | [GothicCommode_01](https://polyhaven.com/a/GothicCommode_01) |
 | Green Chair 01 | Kirill Sannikov | [GreenChair_01](https://polyhaven.com/a/GreenChair_01) |
 | Hanging Industrial Lamp | Kuutti Siitonen | [hanging_industrial_lamp](https://polyhaven.com/a/hanging_industrial_lamp) |
+| Hanging Picture Frame 01 | James Ray Cock | [hanging_picture_frame_01](https://polyhaven.com/a/hanging_picture_frame_01) |
+| Industrial Coffee Table | Ulan Cabanilla | [industrial_coffee_table](https://polyhaven.com/a/industrial_coffee_table) |
 | Industrial Wall Lamp | Kuutti Siitonen | [industrial_wall_lamp](https://polyhaven.com/a/industrial_wall_lamp) |
+| Mantel Clock 01 | Yann Kervran, Rico Cilliers | [mantel_clock_01](https://polyhaven.com/a/mantel_clock_01) |
 | Metal Office Desk | Ulan Cabanilla | [metal_office_desk](https://polyhaven.com/a/metal_office_desk) |
 | Metal Stool 01 | Ulan Cabanilla | [metal_stool_01](https://polyhaven.com/a/metal_stool_01) |
+| Metal Trash Can | GurJas Studios | [metal_trash_can](https://polyhaven.com/a/metal_trash_can) |
 | Mid Century Lounge Chair | Kuutti Siitonen | [mid_century_lounge_chair](https://polyhaven.com/a/mid_century_lounge_chair) |
 | Modern Arm Chair 01 | Vibrant Nordic | [modern_arm_chair_01](https://polyhaven.com/a/modern_arm_chair_01) |
 | Modern Ceiling Lamp 01 | James Ray Cock | [modern_ceiling_lamp_01](https://polyhaven.com/a/modern_ceiling_lamp_01) |
 | Modern Coffee Table 01 | Amin | [modern_coffee_table_01](https://polyhaven.com/a/modern_coffee_table_01) |
+| Modern Coffee Table 02 | Amin | [modern_coffee_table_02](https://polyhaven.com/a/modern_coffee_table_02) |
 | Modern Wooden Cabinet | Patrik Pangerl | [modern_wooden_cabinet](https://polyhaven.com/a/modern_wooden_cabinet) |
+| Old Bed Frame | Luca B | [old_bed_frame](https://polyhaven.com/a/old_bed_frame) |
 | Ornate Mirror 01 | James Ray Cock | [ornate_mirror_01](https://polyhaven.com/a/ornate_mirror_01) |
 | Ottoman 01 | Caspian Fortune | [Ottoman_01](https://polyhaven.com/a/Ottoman_01) |
+| Pachira Aquatica 01 | Rob Tuytel, Rico Cilliers | [pachira_aquatica_01](https://polyhaven.com/a/pachira_aquatica_01) |
 | Painted Wooden Cabinet | Kirill Sannikov | [painted_wooden_cabinet](https://polyhaven.com/a/painted_wooden_cabinet) |
+| Painted Wooden Cabinet 02 | Kirill Sannikov | [painted_wooden_cabinet_02](https://polyhaven.com/a/painted_wooden_cabinet_02) |
 | Painted Wooden Chair 02 | Kirill Sannikov | [painted_wooden_chair_02](https://polyhaven.com/a/painted_wooden_chair_02) |
 | Painted Wooden Nightstand | Kirill Sannikov | [painted_wooden_nightstand](https://polyhaven.com/a/painted_wooden_nightstand) |
+| Painted Wooden Shelves | Kirill Sannikov | [painted_wooden_shelves](https://polyhaven.com/a/painted_wooden_shelves) |
+| Painted Wooden Sofa | Kirill Sannikov | [painted_wooden_sofa](https://polyhaven.com/a/painted_wooden_sofa) |
+| Painted Wooden Table | Kirill Sannikov | [painted_wooden_table](https://polyhaven.com/a/painted_wooden_table) |
 | Planter Pot Clay | Amal Kumar | [planter_pot_clay](https://polyhaven.com/a/planter_pot_clay) |
+| Plastic Crate 01 | PierreB3D | [plastic_crate_01](https://polyhaven.com/a/plastic_crate_01) |
 | Plastic Monobloc Chair 01 | Kuutti Siitonen | [plastic_monobloc_chair_01](https://polyhaven.com/a/plastic_monobloc_chair_01) |
+| Potted Plant 01 | Rico Cilliers | [potted_plant_01](https://polyhaven.com/a/potted_plant_01) |
 | Potted Plant 02 | Rico Cilliers | [potted_plant_02](https://polyhaven.com/a/potted_plant_02) |
 | Potted Plant 04 | James Ray Cock | [potted_plant_04](https://polyhaven.com/a/potted_plant_04) |
 | Projector Screen | PeterM | [projector_screen](https://polyhaven.com/a/projector_screen) |
 | Rockingchair 01 | Jorge Camacho | [Rockingchair_01](https://polyhaven.com/a/Rockingchair_01) |
 | Round Wooden Table 01 | Ulan Cabanilla | [round_wooden_table_01](https://polyhaven.com/a/round_wooden_table_01) |
+| Round Wooden Table 02 | Ulan Cabanilla | [round_wooden_table_02](https://polyhaven.com/a/round_wooden_table_02) |
 | Rubber Duck Toy | Plat251 | [rubber_duck_toy](https://polyhaven.com/a/rubber_duck_toy) |
 | School Chair 01 | Ethan Place | [SchoolChair_01](https://polyhaven.com/a/SchoolChair_01) |
 | School Desk 01 | Ethan Place | [SchoolDesk_01](https://polyhaven.com/a/SchoolDesk_01) |
@@ -589,22 +650,119 @@ Vibrant Nordic.
 | Television 01 | Gabriel Radić | [Television_01](https://polyhaven.com/a/Television_01) |
 | Television 02 | Benny Weimer | [television_02](https://polyhaven.com/a/television_02) |
 | Throw Pillows 01 | Serhii Khromov | [throw_pillows_01](https://polyhaven.com/a/throw_pillows_01) |
+| Vintage Cabinet 01 | Rico Cilliers | [vintage_cabinet_01](https://polyhaven.com/a/vintage_cabinet_01) |
 | Vintage Day Bed | Aron Łyczek | [vintage_day_bed](https://polyhaven.com/a/vintage_day_bed) |
+| Vintage Electric Kettle | SV Garip | [vintage_electric_kettle](https://polyhaven.com/a/vintage_electric_kettle) |
+| Vintage Grandfather Clock 01 | Yann Kervran, James Ray Cock | [vintage_grandfather_clock_01](https://polyhaven.com/a/vintage_grandfather_clock_01) |
 | Vintage Microwave | Adam Nekola | [vintage_microwave](https://polyhaven.com/a/vintage_microwave) |
 | Vintage Suitcase | Maximilian Schuster | [vintage_suitcase](https://polyhaven.com/a/vintage_suitcase) |
 | Vintage Wooden Drawer 01 | James Ray Cock | [vintage_wooden_drawer_01](https://polyhaven.com/a/vintage_wooden_drawer_01) |
 | Wall Clock | PierreB3D | [wall_clock](https://polyhaven.com/a/wall_clock) |
 | Wet Floor Sign 01 | Fran Calvente | [WetFloorSign_01](https://polyhaven.com/a/WetFloorSign_01) |
 | Wicker Basket 02 | Kuutti Siitonen | [wicker_basket_02](https://polyhaven.com/a/wicker_basket_02) |
+| Wooden Bookshelf Worn | Ulan Cabanilla | [wooden_bookshelf_worn](https://polyhaven.com/a/wooden_bookshelf_worn) |
+| Wooden Crate 01 | James Ray Cock | [wooden_crate_01](https://polyhaven.com/a/wooden_crate_01) |
+| Wooden Display Shelves 01 | James Ray Cock | [wooden_display_shelves_01](https://polyhaven.com/a/wooden_display_shelves_01) |
+| Wooden Stool 01 | Kuutti Siitonen | [wooden_stool_01](https://polyhaven.com/a/wooden_stool_01) |
+| Wooden Stool 02 | Kuutti Siitonen | [wooden_stool_02](https://polyhaven.com/a/wooden_stool_02) |
 | Wooden Chair 01 | Jake Mobley | [WoodenChair_01](https://polyhaven.com/a/WoodenChair_01) |
 | Wooden Table 01 | Ethan Place | [WoodenTable_01](https://polyhaven.com/a/WoodenTable_01) |
 | Wooden Table 02 | Fran Calvente | [WoodenTable_02](https://polyhaven.com/a/WoodenTable_02) |
-| Wooden Bookshelf Worn | Ulan Cabanilla | [wooden_bookshelf_worn](https://polyhaven.com/a/wooden_bookshelf_worn) |
-| Wooden Display Shelves 01 | James Ray Cock | [wooden_display_shelves_01](https://polyhaven.com/a/wooden_display_shelves_01) |
+| Boulder 01 | Rico Cilliers | [boulder_01](https://polyhaven.com/a/boulder_01) |
+| Celandine 01 | Rob Tuytel, Rico Cilliers | [celandine_01](https://polyhaven.com/a/celandine_01) |
+| Dandelion 01 | Rob Tuytel, Rico Cilliers | [dandelion_01](https://polyhaven.com/a/dandelion_01) |
+| Dead Tree Trunk 02 | Jenelle van Heerden, Rico Cilliers | [dead_tree_trunk_02](https://polyhaven.com/a/dead_tree_trunk_02) |
+| Fern 02 | Rob Tuytel, Rico Cilliers | [fern_02](https://polyhaven.com/a/fern_02) |
+| Fir Sapling | Rob Tuytel, Rico Cilliers | [fir_sapling](https://polyhaven.com/a/fir_sapling) |
+| Fir Tree 01 | Rob Tuytel, Rico Cilliers | [fir_tree_01](https://polyhaven.com/a/fir_tree_01) |
+| Flower Gazania | James Ray Cock, Jenelle van Heerden | [flower_gazania](https://polyhaven.com/a/flower_gazania) |
+| Grass Bermuda 01 | Rico Cilliers | [grass_bermuda_01](https://polyhaven.com/a/grass_bermuda_01) |
+| Grass Medium 01 | Rob Tuytel, Rico Cilliers | [grass_medium_01](https://polyhaven.com/a/grass_medium_01) |
+| Grass Medium 02 | Rico Cilliers | [grass_medium_02](https://polyhaven.com/a/grass_medium_02) |
+| Island Tree 01 | Rob Tuytel, Rico Cilliers | [island_tree_01](https://polyhaven.com/a/island_tree_01) |
+| Island Tree 02 | Rob Tuytel, Rico Cilliers | [island_tree_02](https://polyhaven.com/a/island_tree_02) |
+| Island Tree 03 | Rob Tuytel, Rico Cilliers | [island_tree_03](https://polyhaven.com/a/island_tree_03) |
+| Jacaranda Tree | Rob Tuytel, Rico Cilliers | [jacaranda_tree](https://polyhaven.com/a/jacaranda_tree) |
+| Namaqualand Boulder 02 | Greg Zaal, Rico Cilliers | [namaqualand_boulder_02](https://polyhaven.com/a/namaqualand_boulder_02) |
+| Nettle Plant | Rob Tuytel, Rico Cilliers | [nettle_plant](https://polyhaven.com/a/nettle_plant) |
+| Periwinkle Plant | Amal Kumar | [periwinkle_plant](https://polyhaven.com/a/periwinkle_plant) |
+| Pine Sapling Medium | Rob Tuytel, Rico Cilliers | [pine_sapling_medium](https://polyhaven.com/a/pine_sapling_medium) |
+| Quiver Tree 01 | James Ray Cock, Dario Barresi, Rico Cilliers | [quiver_tree_01](https://polyhaven.com/a/quiver_tree_01) |
+| Rock 07 | Jenelle van Heerden | [rock_07](https://polyhaven.com/a/rock_07) |
+| Rock 09 | Jenelle van Heerden | [rock_09](https://polyhaven.com/a/rock_09) |
+| Rock Moss Set 01 | Kless Gyzen | [rock_moss_set_01](https://polyhaven.com/a/rock_moss_set_01) |
+| Shrub 01 | Rico Cilliers | [shrub_01](https://polyhaven.com/a/shrub_01) |
+| Shrub 02 | Rico Cilliers | [shrub_02](https://polyhaven.com/a/shrub_02) |
+| Shrub 03 | Rico Cilliers | [shrub_03](https://polyhaven.com/a/shrub_03) |
+| Shrub 04 | Rico Cilliers | [shrub_04](https://polyhaven.com/a/shrub_04) |
+| Stone 01 | Dario Barresi, Rico Cilliers | [stone_01](https://polyhaven.com/a/stone_01) |
+| Tree Small 02 | Rico Cilliers | [tree_small_02](https://polyhaven.com/a/tree_small_02) |
+| Tree Stump 01 | Rob Tuytel | [tree_stump_01](https://polyhaven.com/a/tree_stump_01) |
+| Wild Rooibos Bush | James Ray Cock, Jenelle van Heerden | [wild_rooibos_bush](https://polyhaven.com/a/wild_rooibos_bush) |
+| Concrete Road Barrier | Amal Kumar | [concrete_road_barrier](https://polyhaven.com/a/concrete_road_barrier) |
+| Exterior Aircon Unit | Monsta3D | [exterior_aircon_unit](https://polyhaven.com/a/exterior_aircon_unit) |
+| Fire Hydrant | Gonçalo Felício | [fire_hydrant](https://polyhaven.com/a/fire_hydrant) |
+| Outdoor Table Chair Set 01 | James Ray Cock | [outdoor_table_chair_set_01](https://polyhaven.com/a/outdoor_table_chair_set_01) |
+| Painted Wooden Bench | Kirill Sannikov | [painted_wooden_bench](https://polyhaven.com/a/painted_wooden_bench) |
+| Planter Box 01 | James Ray Cock | [planter_box_01](https://polyhaven.com/a/planter_box_01) |
+| Security Camera 01 | Alexander Otterbeck, Yann Kervran | [security_camera_01](https://polyhaven.com/a/security_camera_01) |
+| Street Lamp 01 | Josh Dean | [street_lamp_01](https://polyhaven.com/a/street_lamp_01) |
+| Street Lamp 02 | Josh Dean | [street_lamp_02](https://polyhaven.com/a/street_lamp_02) |
+| Trashbag | Benny Weimer | [trashbag](https://polyhaven.com/a/trashbag) |
+| Utility Box 01 | James Ray Cock | [utility_box_01](https://polyhaven.com/a/utility_box_01) |
+| Water Manhole Cover | Raunox | [water_manhole_cover](https://polyhaven.com/a/water_manhole_cover) |
 | Wooden Picnic Table | Ulan Cabanilla | [wooden_picnic_table](https://polyhaven.com/a/wooden_picnic_table) |
-| Wooden Stool 01 | Kuutti Siitonen | [wooden_stool_01](https://polyhaven.com/a/wooden_stool_01) |
+
+| Textura no editor | Nome no Poly Haven | Autor | Página |
+| --- | --- | --- | --- |
+| Reboco pintado | White Stucco | Amal Kumar | [white_stucco](https://polyhaven.com/a/white_stucco) |
+| Parede lisa | Painted Plaster Wall | Amal Kumar | [painted_plaster_wall](https://polyhaven.com/a/painted_plaster_wall) |
+| Tijolo vermelho | Red Brick | Rob Tuytel | [red_brick](https://polyhaven.com/a/red_brick) |
+| Tijolo antigo | Brick Wall 02 | Dimitrios Savva | [brick_wall_02](https://polyhaven.com/a/brick_wall_02) |
+| Concreto | Concrete Wall 008 | Dario Barresi, Charlotte Baglioni | [concrete_wall_008](https://polyhaven.com/a/concrete_wall_008) |
+| Pedra | Stone Wall | Dario Barresi, Charlotte Baglioni | [stone_wall](https://polyhaven.com/a/stone_wall) |
+| Tábuas | Brown Planks 05 | Rob Tuytel | [brown_planks_05](https://polyhaven.com/a/brown_planks_05) |
+| Chapa ondulada | Corrugated Iron | Jenelle van Heerden, Dimitrios Savva | [corrugated_iron](https://polyhaven.com/a/corrugated_iron) |
+| Telha de barro | Clay Roof Tiles | Amal Kumar | [clay_roof_tiles](https://polyhaven.com/a/clay_roof_tiles) |
+| Telha cinza | Grey Roof Tiles | Rob Tuytel | [grey_roof_tiles](https://polyhaven.com/a/grey_roof_tiles) |
+| Ardósia | Roof Slates 02 | Rob Tuytel | [roof_slates_02](https://polyhaven.com/a/roof_slates_02) |
+| Manta asfáltica | Bitumen | Rob Tuytel | [bitumen](https://polyhaven.com/a/bitumen) |
+| Asfalto | Asphalt 02 | Rob Tuytel | [asphalt_02](https://polyhaven.com/a/asphalt_02) |
+| Calçada de concreto | Concrete Pavement | Charlotte Baglioni | [concrete_pavement](https://polyhaven.com/a/concrete_pavement) |
+| Calçada de tijolo | Brick Pavement | Charlotte Baglioni | [brick_pavement](https://polyhaven.com/a/brick_pavement) |
+| Paralelepípedo | Cobblestone Floor 01 | Rob Tuytel | [cobblestone_floor_01](https://polyhaven.com/a/cobblestone_floor_01) |
+| Grama | Leafy Grass | Charlotte Baglioni | [leafy_grass](https://polyhaven.com/a/leafy_grass) |
+| Chão de floresta | Forest Ground 01 | Rob Tuytel | [forrest_ground_01](https://polyhaven.com/a/forrest_ground_01) |
+| Terra | Dirt | Charlotte Baglioni | [dirt](https://polyhaven.com/a/dirt) |
+| Areia | Sand 02 | Charlotte Baglioni | [sand_02](https://polyhaven.com/a/sand_02) |
+| Rocha | Rock Face | Greg Zaal, Dario Barresi | [rock_face](https://polyhaven.com/a/rock_face) |
+| Neve | Snow 02 | Rob Tuytel | [snow_02](https://polyhaven.com/a/snow_02) |
+| Cascalho | Gravel Ground 01 | Rob Tuytel | [gravel_ground_01](https://polyhaven.com/a/gravel_ground_01) |
+| Solo para pintar | Forest Ground 01 | Rob Tuytel | [forrest_ground_01](https://polyhaven.com/a/forrest_ground_01) |
+| Piso laminado | Laminate Floor 02 | Dario Barresi, Charlotte Baglioni | [laminate_floor_02](https://polyhaven.com/a/laminate_floor_02) |
+| Taco | Herringbone Parquet | Jenelle van Heerden, Sergej Majboroda | [herringbone_parquet](https://polyhaven.com/a/herringbone_parquet) |
+| Porcelanato | Floor Tiles 08 | Rob Tuytel | [floor_tiles_08](https://polyhaven.com/a/floor_tiles_08) |
+| Mármore | Marble 01 | Rob Tuytel | [marble_01](https://polyhaven.com/a/marble_01) |
+| Azulejo | Long White Tiles | Jenelle van Heerden, Sergej Majboroda | [long_white_tiles](https://polyhaven.com/a/long_white_tiles) |
+| Carvalho | Oak Veneer 01 | Jenelle van Heerden | [oak_veneer_01](https://polyhaven.com/a/oak_veneer_01) |
+| Madeira escura | Dark Wood | Dario Barresi, Dimitrios Savva, Rico Cilliers | [dark_wood](https://polyhaven.com/a/dark_wood) |
+| Tecido de algodão | Cotton Jersey | colormass, Rico Cilliers | [cotton_jersey](https://polyhaven.com/a/cotton_jersey) |
+| Veludo | Velour Velvet | colormass, Rico Cilliers | [velour_velvet](https://polyhaven.com/a/velour_velvet) |
+| Couro | Brown Leather | Rob Tuytel | [brown_leather](https://polyhaven.com/a/brown_leather) |
+| Jeans | Denim Fabric | Rob Tuytel | [denim_fabric](https://polyhaven.com/a/denim_fabric) |
+| Chapa xadrez | Metal Plate | Rob Tuytel | [metal_plate](https://polyhaven.com/a/metal_plate) |
+| Metal enferrujado | Rusty Metal | Rob Tuytel | [rusty_metal](https://polyhaven.com/a/rusty_metal) |
+| Casca de árvore | Bark Brown 02 | Rob Tuytel | [bark_brown_02](https://polyhaven.com/a/bark_brown_02) |
+| Casca de pinheiro | Pine Bark | Dimitrios Savva | [pine_bark](https://polyhaven.com/a/pine_bark) |
+
+Céu: Kloofendal 48d Partly Cloudy (Pure Sky), de Greg Zaal, Jarod Guest ([kloofendal_48d_partly_cloudy_puresky](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky))
 
 </details>
+
+**[MakeHuman](http://www.makehumancommunity.org)**: as pessoas do Realista. O corpo, as formas de
+corpo, o esqueleto com seus pesos e o pacote makehuman system assets (peles, olhos, cabelos, roupas,
+sapatos e chapéu) são CC0. Os modelos foram montados com o MPFB, cujo código (GPL 3.0) não faz parte
+do editor.
 
 **[CodePlay77](https://codeplay.com.br)**: seis karts, o piloto e cinco aerofólios vêm do jogo
 Codeplay in Kart, do mesmo autor deste editor, liberados em CC0. Os outros veículos, as peças do
@@ -613,7 +771,7 @@ parte do projeto.
 
 ### Animações
 
-**[Mesh2Motion](https://github.com/Mesh2Motion/mesh2motion-app)**: as 162 animações humanas, CC0.
+**[Mesh2Motion](https://github.com/Mesh2Motion/mesh2motion-app)**: 162 animações humanas e o esqueleto sobre o qual as 12 danças e os 27 golpes do editor foram feitos, CC0.
 O README do Mesh2Motion declara que "the art assets (3d models, rigs, animations) are all licensed
 under CC0". Os clipes de terceiros que ele traz em `static/animations/CarnegieMellonAnimations/` não
 entram no editor.
@@ -639,7 +797,7 @@ entram no editor.
 
 O projeto também usa, sem incluí-las no aplicativo: [Vite](https://vite.dev) (MIT),
 [TypeScript](https://www.typescriptlang.org) (Apache 2.0), [Vitest](https://vitest.dev) (MIT) e
-[pngjs](https://github.com/pngjs/pngjs) (MIT). Os veículos e os móveis do Poly Haven passam pelo
+[pngjs](https://github.com/pngjs/pngjs) (MIT). Os veículos e os modelos do Poly Haven passam pelo
 [Blender](https://www.blender.org), e as exportações são testadas no [Godot](https://godotengine.org).
 
 ## Autor

@@ -6,7 +6,6 @@ export const SIDEWALK_HEIGHT = 0.14;
 
 const ASPHALT = "#3a3d44";
 const SIDEWALK = "#aeb3ba";
-const CURB = "#8d9299";
 const LINE = "#f0efe6";
 const GRASS = "#4f9a4a";
 
@@ -22,10 +21,12 @@ const groundSockets = (top: number) => [
   socket("top", [0, top, 0], [0, 1, 0]),
 ];
 
-const asphalt = (points: Point[]) => slab(points, ROAD_TOP);
+// Photographed surfaces at their own colors; Arcade swaps them back for plain paint (see styleize.ts).
+const REAL = "#ffffff";
+const asphalt = (points: Point[]) => slab(points, ROAD_TOP, { color: REAL, surface: "asphalt" });
 const line = (points: Point[]) => slab(points, LINE_TOP, { color: LINE });
-const walk = (points: Point[]) => slab(points, SIDEWALK_HEIGHT, { color: SIDEWALK });
-const curb = (points: Point[]) => slab(points, SIDEWALK_HEIGHT + 0.005, { color: CURB });
+const walk = (points: Point[]) => slab(points, SIDEWALK_HEIGHT, { color: REAL, surface: "sidewalk" });
+const curb = (points: Point[]) => slab(points, SIDEWALK_HEIGHT + 0.005, { color: REAL, surface: "concrete" });
 
 const dashes = (axis: "x" | "z", length = 1.2): ShapePiece[] =>
   [-2.8, 0, 2.8].map((center) => {
@@ -117,9 +118,9 @@ export const roadBlocks: BlockDef[] = [
   roadTile("curve", "Curva", [
     tileSlab(fullAsphalt),
     walk(curveOuter),
-    slab(sector(corner, corner, 0, 1, 180, 270, 6), SIDEWALK_HEIGHT, { color: SIDEWALK }),
-    slab(sector(corner, corner, 6.92, 7, 180, 270, 16), SIDEWALK_HEIGHT + 0.005, { color: CURB }),
-    slab(sector(corner, corner, 1, 1.08, 180, 270, 6), SIDEWALK_HEIGHT + 0.005, { color: CURB }),
+    walk(sector(corner, corner, 0, 1, 180, 270, 6)),
+    curb(sector(corner, corner, 6.92, 7, 180, 270, 16)),
+    curb(sector(corner, corner, 1, 1.08, 180, 270, 6)),
     ...curveMarks(),
   ]),
   roadTile("t", "Bifurcação", [
@@ -147,13 +148,7 @@ export const roadBlocks: BlockDef[] = [
     "Calçada",
     "road",
     SIDEWALK,
-    compound(
-      slab(rect(-roadHalf, -roadHalf, roadHalf, roadHalf), SIDEWALK_HEIGHT),
-      ...[-2, 0, 2].flatMap((v) => [
-        slab(rect(-roadHalf, v - 0.01, roadHalf, v + 0.01), SIDEWALK_HEIGHT + 0.002, { color: CURB }),
-        slab(rect(v - 0.01, -roadHalf, v + 0.01, roadHalf), SIDEWALK_HEIGHT + 0.002, { color: CURB }),
-      ]),
-    ),
+    compound(walk(rect(-roadHalf, -roadHalf, roadHalf, roadHalf))),
     groundSockets(SIDEWALK_HEIGHT),
     { ground: true, snap: ROAD_TILE },
   ),
@@ -162,7 +157,7 @@ export const roadBlocks: BlockDef[] = [
     "Gramado",
     "road",
     GRASS,
-    slab(rect(-roadHalf, -roadHalf, roadHalf, roadHalf), 0.1).shape,
+    compound(slab(rect(-roadHalf, -roadHalf, roadHalf, roadHalf), 0.1, { color: REAL, surface: "grass" })),
     groundSockets(0.1),
     { ground: true, snap: ROAD_TILE },
   ),

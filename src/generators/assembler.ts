@@ -39,10 +39,25 @@ export class Assembler {
   readonly parts: AssembledPart[] = [];
   readonly shapes: GeneratedShape[] = [];
 
+  private readonly shared = new Map<string, string>();
+
   /** A mesh made for this model. Returns the block id its parts use. */
   addShape(shape: GeneratedShape): string {
     this.shapes.push(shape);
     return `@${this.shapes.length - 1}`;
+  }
+
+  /**
+   * A mesh that many parts use, made once per key. Cities place hundreds of buildings, and a
+   * project holds a limited number of meshes and vertices.
+   */
+  sharedShape(key: string, make: () => GeneratedShape): string {
+    let id = this.shared.get(key);
+    if (!id) {
+      id = this.addShape(make());
+      this.shared.set(key, id);
+    }
+    return id;
   }
 
   add(block: string, position: Vec3, options: PartOptions = {}): AssembledPart {

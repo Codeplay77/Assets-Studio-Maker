@@ -1850,7 +1850,8 @@ button:disabled {
   gap: 6px;
 }
 
-.finish-row select.input {
+.finish-row select.input,
+select.texture-select {
   min-width: 0;
   color-scheme: dark;
 }

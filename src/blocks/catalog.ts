@@ -1,6 +1,7 @@
 import type { CustomShape } from "../core/types";
 import { meshBounds, type PolyMesh } from "../modeling/mesh";
 import raw from "./blocks.json";
+import { hasSurface } from "./surfaces";
 import type { BlockCategory, BlockDef, BlockShape, ShapePiece, SocketDef, Vec3 } from "./types";
 
 export type { BlockCategory, BlockDef, BlockShape, Primitive, ShapePiece, SocketDef, Vec3 } from "./types";
@@ -23,13 +24,14 @@ export function meshToBlockShape(mesh: PolyMesh): BlockShape {
     else byMaterial.set(material, [face]);
   });
   const pieces = [...byMaterial].map(([material, faces]): ShapePiece => {
-    const { color, shade, finish, painted } = mesh.materials[material];
+    const { color, shade, finish, painted, texture } = mesh.materials[material];
     const colors = painted && mesh.vertexColors?.length === mesh.vertices.length ? mesh.vertexColors : undefined;
     return {
       shape: { kind: "polygons", vertices: mesh.vertices, faces, crease: mesh.smoothAngle, ...(colors ? { colors } : {}) },
       ...(color ? { color } : {}),
       ...(shade === undefined ? {} : { shade }),
       ...(finish ? { finish } : {}),
+      ...(texture && hasSurface(texture) ? { surface: texture } : {}),
     };
   });
   return { kind: "compound", pieces };

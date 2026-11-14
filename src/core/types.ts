@@ -22,6 +22,8 @@ export interface ShapeMaterial {
   color?: string;
   shade?: number;
   finish?: Finish;
+  /** A photographed material (see src/blocks/surfaces.ts), laid on the faces at its real size. */
+  texture?: string;
   /** Takes its colors from the shape's `vertexColors`, so they blend across the faces. */
   painted?: boolean;
 }

@@ -6,7 +6,9 @@ import {
   createBlockMaterials,
   createStudioLighting,
   disposeBlockMaterials,
+  surfacesOfShape,
 } from "../blocks/geometry";
+import { isSurfaceLoaded, surfacesReady } from "../blocks/textures";
 import type { BlockDef } from "../blocks/types";
 
 const SIZE = 160;
@@ -23,6 +25,9 @@ const cache = new WeakMap<BlockDef, string>();
 const queue = new Map<BlockDef, Set<(url: string) => void>>();
 let studio: Studio | null = null;
 let scheduled = false;
+const waiting = new WeakSet<BlockDef>();
+/** Blocks whose images failed to load are drawn without them rather than never. */
+const untextured = new WeakSet<BlockDef>();
 
 function getStudio(): Studio {
   if (studio) return studio;
@@ -43,7 +48,7 @@ function getStudio(): Studio {
 function render(block: BlockDef): string {
   const { renderer, scene, camera } = getStudio();
   const geometry = buildGeometry(block.shape);
-  const materials = createBlockMaterials(block.color);
+  const materials = createBlockMaterials(block.color, { geometry });
   const mesh = new THREE.Mesh(geometry, materials);
   scene.add(mesh);
 
@@ -71,12 +76,26 @@ function schedule(): void {
     const start = performance.now();
     for (const [block, listeners] of queue) {
       if (performance.now() - start > FRAME_BUDGET_MS) break;
+      // A textured block waits for its images, or its picture would come out untextured for good.
+      const surfaces = surfacesOfShape(block.shape);
+      if (!untextured.has(block) && !surfaces.every(isSurfaceLoaded)) {
+        if (!waiting.has(block)) {
+          waiting.add(block);
+          surfacesReady(surfaces)
+            .catch(() => untextured.add(block))
+            .finally(() => {
+              waiting.delete(block);
+              schedule();
+            });
+        }
+        continue;
+      }
       queue.delete(block);
       const url = render(block);
       cache.set(block, url);
       for (const listener of listeners) listener(url);
     }
-    schedule();
+    if ([...queue.keys()].some((block) => !waiting.has(block))) schedule();
   });
 }
 

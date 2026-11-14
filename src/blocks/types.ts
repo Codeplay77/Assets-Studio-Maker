@@ -59,6 +59,17 @@ export type Primitive =
   | { kind: "model"; model: string; pack?: ModelPackName; offset: number; vertices: number; min: Vec3; max: Vec3 }
   /** A zone of a model made in Blender, stored in the vehicle pack (see tools/blender/). */
   | { kind: "baked"; offset: number; vertices: number; indices: number; min: Vec3; max: Vec3 }
+  /**
+   * A textured model with its own texture layout, stored in the Realista pack
+   * (see scripts/import-realistic.ts). `uv` is the range of its texture coordinates: u0 v0 u1 v1.
+   */
+  | { kind: "mapped"; offset: number; vertices: number; indices: number; min: Vec3; max: Vec3; uv: [number, number, number, number] }
+  /**
+   * A textured piece of a Realista person, stored in the people pack (see scripts/import-people.ts):
+   * a mapped model whose every vertex also names the four bones of the block's skeleton that move
+   * it, and how much.
+   */
+  | { kind: "skinned"; offset: number; vertices: number; indices: number; min: Vec3; max: Vec3; uv: [number, number, number, number] }
   | { kind: "icosahedron"; radius: number; detail?: number }
   | { kind: "dodecahedron"; radius: number }
   | { kind: "torus"; radius: number; tube: number; arc?: number }
@@ -82,6 +93,11 @@ export interface ShapePiece {
   /** Darkens a piece that follows the part's color. */
   shade?: number;
   finish?: BlockFinish;
+  /**
+   * A photographed material from src/blocks/surfaces.ts. It replaces the finish: the texture brings
+   * its own roughness, metalness and relief. The color still tints it.
+   */
+  surface?: string;
   /** Keeps every polygon visibly flat, for the low poly look. */
   faceted?: boolean;
 }
@@ -110,6 +126,19 @@ export interface BlockDef {
   upright?: boolean;
   /** Placement grid, when it differs from the default. */
   snap?: number;
+  /** The skeleton a block made of skinned pieces bends with. */
+  skeleton?: BlockSkeleton;
+}
+
+/**
+ * The bones of the editor's animations (SOURCE_BONES, in that order) as they stand in a skinned
+ * block: where each one turns and where it points, in the block's space. Every block of one person
+ * has the same skeleton; the body says so, and the rest (clothes, hair) bends along with it.
+ */
+export interface BlockSkeleton {
+  joints: number[][];
+  directions: number[][];
+  body?: boolean;
 }
 
 export interface BlockCategory {

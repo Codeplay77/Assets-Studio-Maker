@@ -8,7 +8,12 @@ import {
   createBlockMaterials,
   createStudioLighting,
   disposeBlockMaterials,
+  fitBlockMaterials,
+  isUsedMaterial,
 } from "../blocks/geometry";
+import { onSurfaceLoaded } from "../blocks/textures";
+import { blocksStyle } from "../blocks/styles";
+import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import type { CustomShape, Part, PartId, PartUpdate, PickMode, Project, Quat, Tool, Vec3 } from "../core/types";
 import { softWeights, transformVertices, type PolyMesh } from "../modeling/mesh";
 import { SculptStroke, type BrushKind, type BrushSettings } from "../modeling/sculpt";
@@ -84,6 +89,23 @@ function createBackdrop(): THREE.CanvasTexture {
 }
 
 type PartMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial[]>;
+type PartPose = { position: Vec3; rotation: Quat; bones?: Float32Array };
+
+/**
+ * A mesh for a skinned block (a Realista person), bent by the bones of its skeleton. The bones are
+ * not in the scene: an animation preview sets each one's move directly, in the part's own space,
+ * and at rest they do nothing.
+ */
+function skinnedMesh(geometry: THREE.BufferGeometry, materials: THREE.MeshStandardMaterial[], bones: number): PartMesh {
+  const mesh = new THREE.SkinnedMesh(geometry, materials);
+  const list = Array.from({ length: bones }, () => new THREE.Bone());
+  for (const bone of list) bone.matrixWorldAutoUpdate = false;
+  mesh.bindMode = THREE.DetachedBindMode;
+  mesh.bind(new THREE.Skeleton(list, list.map(() => new THREE.Matrix4())), new THREE.Matrix4());
+  // Its bounds are those of the rest pose; a pose can reach outside them.
+  mesh.frustumCulled = false;
+  return mesh as unknown as PartMesh;
+}
 
 export interface ViewportCallbacks {
   onPlace(block: string, placement: Placement): void;
@@ -122,6 +144,14 @@ export class EditorViewport {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(40, 1, 0.05, 2000);
   private readonly sun = new THREE.DirectionalLight(0xfff4e6, 1.8);
+  private readonly hemisphere = new THREE.HemisphereLight(0xdfe9ff, 0x3a3f4a, 0.55);
+  private studio: THREE.Texture | null = null;
+  /** The photographed sky that lights Realista scenes; loaded the first time one is shown. */
+  private sky: THREE.Texture | null = null;
+  private skyLoading = false;
+  /** Whether the scene shown is Realista, and whether the sky lights it yet. */
+  private wantsSky = false;
+  private outdoors = false;
   private readonly fineGrid = new THREE.GridHelper(20, 80, 0x8895ad, 0x8895ad);
   private readonly orbit: OrbitControls;
   private readonly gizmo: TransformControls;
@@ -154,7 +184,7 @@ export class EditorViewport {
   private snapEnabled = true;
   private readonly meshes = new Map<PartId, PartMesh>();
   /** An animation being previewed: where each posed part is shown instead of where it is. */
-  private pose: Map<PartId, { position: Vec3; rotation: Quat }> | null = null;
+  private pose: Map<PartId, PartPose> | null = null;
   private readonly ghost: PartMesh;
   private readonly markers: THREE.Mesh[] = [];
 
@@ -172,6 +202,7 @@ export class EditorViewport {
   private press: { x: number; y: number; onGizmo: boolean } | null = null;
   private renderQueued = false;
   private frame = 0;
+  private readonly stopSurfaceListener: () => void;
 
   constructor(
     private readonly container: HTMLElement,
@@ -183,6 +214,7 @@ export class EditorViewport {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     createStudioLighting(this.renderer, this.scene, new RoomEnvironment());
+    this.studio = this.scene.environment;
     container.appendChild(this.renderer.domElement);
 
     this.scene.background = createBackdrop();
@@ -219,6 +251,8 @@ export class EditorViewport {
     container.appendChild(this.marquee);
 
     this.addEnvironment();
+    // A texture arriving changes how the scene looks, though nothing in the project changed.
+    this.stopSurfaceListener = onSurfaceLoaded(this.requestRender);
 
     const ghostMaterials = createBlockMaterials(0xffffff, { ownFixed: true });
     for (const material of ghostMaterials) {
@@ -265,7 +299,8 @@ export class EditorViewport {
       this.meshes.delete(id);
     }
     this.releaseUnusedGeometry();
-    if (this.placing && hasBlock(this.placing.block)) this.ghost.geometry = this.geometryFor(this.placing.block);
+    this.applyStyleLighting(blocksStyle(project.parts.map((part) => part.block)) === "realistic");
+    if (this.placing && hasBlock(this.placing.block)) this.setGhostGeometry(this.geometryFor(this.placing.block));
     this.fitShadowsToModel();
     this.applySelection();
     this.updateGhost();
@@ -307,7 +342,7 @@ export class EditorViewport {
   setPlacing(block: string | null, color: string | null): void {
     this.placing = block ? { block, color: color ?? getBlock(block).color } : null;
     if (this.placing) {
-      this.ghost.geometry = this.geometryFor(this.placing.block);
+      this.setGhostGeometry(this.geometryFor(this.placing.block));
       for (const material of this.tintedMaterials(this.ghost)) material.color.set(this.placing.color);
     }
     this.updateGhost();
@@ -381,6 +416,7 @@ export class EditorViewport {
 
   dispose(): void {
     cancelAnimationFrame(this.frame);
+    this.stopSurfaceListener();
     this.resizeObserver.disconnect();
     const canvas = this.renderer.domElement;
     canvas.removeEventListener("pointermove", this.onPointerMove);
@@ -395,7 +431,8 @@ export class EditorViewport {
     this.gizmo.dispose();
     this.orbit.dispose();
     for (const mesh of [...this.meshes.values(), this.ghost]) disposeBlockMaterials(mesh.material);
-    this.scene.environment?.dispose();
+    this.studio?.dispose();
+    this.sky?.dispose();
     (this.scene.background as THREE.Texture).dispose();
     for (const { geometry } of this.geometries.values()) geometry.dispose();
     this.previewGeometry?.dispose();
@@ -446,7 +483,7 @@ export class EditorViewport {
   }
 
   private addEnvironment(): void {
-    this.scene.add(new THREE.HemisphereLight(0xdfe9ff, 0x3a3f4a, 0.55));
+    this.scene.add(this.hemisphere);
 
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(4096, 4096);
@@ -505,6 +542,51 @@ export class EditorViewport {
     this.gizmo.setScaleSnap(this.snapEnabled ? (fine ? MESH_SCALE_SNAP : SCALE_SNAP) : null);
   }
 
+  /**
+   * Realista is lit by a photographed sky, so paint, glass and metal reflect a real one; the other
+   * styles keep the soft studio light their colors were chosen under.
+   */
+  private applyStyleLighting(outdoors: boolean): void {
+    this.wantsSky = outdoors;
+    if (outdoors && !this.sky) {
+      if (!this.skyLoading) {
+        this.skyLoading = true;
+        new HDRLoader()
+          .loadAsync("/environments/sky.hdr")
+          .then((hdr) => {
+            hdr.mapping = THREE.EquirectangularReflectionMapping;
+            const generator = new THREE.PMREMGenerator(this.renderer);
+            this.sky = generator.fromEquirectangular(hdr).texture;
+            generator.dispose();
+            hdr.dispose();
+            this.applyStyleLighting(this.wantsSky);
+          })
+          .catch((error: unknown) => console.error(error));
+      }
+      return;
+    }
+    if (outdoors === this.outdoors) return;
+    this.outdoors = outdoors;
+    this.scene.environment = outdoors ? this.sky : this.studio;
+    this.scene.environmentIntensity = outdoors ? 0.9 : 0.42;
+    this.hemisphere.intensity = outdoors ? 0.25 : 0.55;
+    this.sun.intensity = outdoors ? 2.2 : 1.8;
+    this.requestRender();
+  }
+
+  /** The preview gets its own see-through copy of any textured material the block brings. */
+  private setGhostGeometry(geometry: THREE.BufferGeometry): void {
+    this.ghost.geometry = geometry;
+    const before = this.ghost.material.length;
+    fitBlockMaterials(this.ghost.material, geometry, this.placing?.color ?? 0xffffff, { ownFixed: true });
+    for (const material of this.ghost.material.slice(before)) {
+      if (!isUsedMaterial(material)) continue;
+      material.transparent = true;
+      material.opacity = 0.6;
+      material.depthWrite = false;
+    }
+  }
+
   /** A shape that changed gets a new definition, which is what triggers a rebuild here. */
   private geometryFor(block: string): THREE.BufferGeometry {
     const def = getBlock(block);
@@ -534,7 +616,9 @@ export class EditorViewport {
     const geometry = this.geometryFor(part.block);
     let mesh = this.meshes.get(part.id);
     if (!mesh) {
-      mesh = new THREE.Mesh(geometry, createBlockMaterials(part.color));
+      const materials = createBlockMaterials(part.color, { geometry });
+      const skeleton = getBlock(part.block).skeleton;
+      mesh = skeleton && geometry.getAttribute("skinIndex") ? skinnedMesh(geometry, materials, skeleton.joints.length) : new THREE.Mesh(geometry, materials);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.userData.partId = part.id;
@@ -543,6 +627,7 @@ export class EditorViewport {
       this.meshes.set(part.id, mesh);
     }
     if (mesh.geometry !== geometry && !this.meshDrag && !this.sculpt) mesh.geometry = geometry;
+    fitBlockMaterials(mesh.material, mesh.geometry, part.color);
     mesh.userData.group = part.group;
     for (const material of this.tintedMaterials(mesh)) material.color.set(part.color);
     if (this.transforming && this.selected.includes(part.id)) return;
@@ -551,13 +636,20 @@ export class EditorViewport {
     mesh.quaternion.fromArray(posed?.rotation ?? part.rotation);
     mesh.scale.fromArray(part.scale);
     mesh.updateMatrixWorld();
+    if (mesh instanceof THREE.SkinnedMesh) {
+      const bones = posed?.bones;
+      mesh.skeleton.bones.forEach((bone, index) => {
+        if (bones) bone.matrixWorld.fromArray(bones, index * 16);
+        else bone.matrixWorld.identity();
+      });
+    }
   }
 
   /**
    * Shows parts in an animation pose without changing the project; `null` puts them back. Called
    * on every frame of a preview, so it only moves the parts the pose names.
    */
-  setPose(pose: Map<PartId, { position: Vec3; rotation: Quat }> | null): void {
+  setPose(pose: Map<PartId, PartPose> | null): void {
     const previous = this.pose;
     this.pose = pose;
     if (this.project) {
@@ -570,7 +662,7 @@ export class EditorViewport {
 
   /** Even slots follow the part's color; odd ones keep their own. */
   private tintedMaterials(mesh: PartMesh): THREE.MeshStandardMaterial[] {
-    return mesh.material.filter((_, slot) => slot % 2 === 0);
+    return mesh.material.filter((material, slot) => slot % 2 === 0 && isUsedMaterial(material));
   }
 
   private selectedMeshes(): PartMesh[] {
@@ -692,7 +784,9 @@ export class EditorViewport {
   private showPreview(preview: PolyMesh, shapeId: string): void {
     const geometry = buildGeometry(meshToBlockShape(preview));
     for (const mesh of this.meshes.values()) {
-      if (mesh.userData.block === shapeId) mesh.geometry = geometry;
+      if (mesh.userData.block !== shapeId) continue;
+      mesh.geometry = geometry;
+      fitBlockMaterials(mesh.material, geometry, (mesh.material[0] as THREE.MeshStandardMaterial).color.getHex());
     }
     this.previewGeometry?.dispose();
     this.previewGeometry = geometry;

@@ -27,6 +27,7 @@ const MAX_SHAPE_FACES: usize = 20_000;
 const MAX_PROJECT_VERTICES: usize = 200_000;
 const MAX_FACE_SIDES: usize = 256;
 const MAX_MATERIALS: usize = 256;
+const MAX_TEXTURE_ID: usize = 64;
 const MAX_SOCKETS: usize = 24;
 const MAX_NAME_CHARS: usize = 80;
 const MAX_COORDINATE: f64 = 100_000.0;
@@ -88,6 +89,9 @@ pub struct ShapeMaterial {
     pub shade: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish: Option<Finish>,
+    /// A photographed material from the editor's catalog, laid on the faces at its real size.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub texture: Option<String>,
     /// Takes its colors from the shape's `vertex_colors`, so they blend across the faces.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub painted: bool,
@@ -369,6 +373,14 @@ fn check_material(material: &mut ShapeMaterial) -> Result<(), String> {
     if let Some(shade) = material.shade {
         if !shade.is_finite() || !(0.0..=1.0).contains(&shade) {
             return Err("o tom de um material precisa estar entre 0 e 1".to_string());
+        }
+    }
+    if let Some(texture) = &material.texture {
+        let valid = !texture.is_empty()
+            && texture.len() <= MAX_TEXTURE_ID
+            && texture.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'));
+        if !valid {
+            return Err(format!("textura inválida: {texture}"));
         }
     }
     Ok(())

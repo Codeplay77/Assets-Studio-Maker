@@ -23,9 +23,9 @@ pnpm install
 pnpm tauri dev
 ```
 
-Para mexer nos veículos ou nos móveis do Poly Haven, instale também o
-[Blender](https://www.blender.org) 5.1. Os comandos de cada pacote estão no
-[README](README.md#desenvolvimento).
+Para mexer nos veículos, nos modelos do Poly Haven ou nas pessoas do Realista, instale também o
+[Blender](https://www.blender.org) 5.1 (as pessoas pedem ainda o MPFB e o pacote de recursos do
+MakeHuman). Os comandos de cada pacote estão no [README](README.md#desenvolvimento).
 
 ## Enviar uma mudança
 

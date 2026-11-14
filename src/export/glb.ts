@@ -2,7 +2,17 @@ import * as THREE from "three";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { mergeGeometries, mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 import { getBlock, type BlockDef } from "../blocks/catalog";
-import { buildGeometry, createBlockMaterials, disposeBlockMaterials } from "../blocks/geometry";
+import {
+  buildGeometry,
+  createBlockMaterials,
+  disposeBlockMaterials,
+  fitBlockMaterials,
+  isUsedMaterial,
+  slotInfo,
+  surfacesOfShape,
+} from "../blocks/geometry";
+import { surfaceIndex, SURFACES } from "../blocks/surfaces";
+import { createSurfaceMaterial, surfacesReady } from "../blocks/textures";
 import { bakeClip, buildSkeleton } from "../animation/bake";
 import { ClipSampler, clipFileName, getClip, hasAnimationPack, loadAnimationPack, type ClipInfo } from "../animation/clips";
 import { findRigs, type Rig } from "../animation/rig";
@@ -55,14 +65,32 @@ export function countTriangles(parts: Part[]): number {
 /** Named in the slot order of BLOCK_FINISHES. */
 const FINISH_NAMES = ["fosco", "brilhante", "metal", "vidro", "luz", "pintura", "vidro_fume"];
 
-function slice(geometry: THREE.BufferGeometry, start: number, count: number): THREE.BufferGeometry {
+/** Merged meshes are split by material: finishes keep their index, surfaces come after them. */
+const SURFACE_KEY = FINISH_NAMES.length;
+const keyOfSlot = (slot: number) => {
+  const { surface } = slotInfo(slot);
+  return surface ? SURFACE_KEY + surfaceIndex(surface) : Math.floor(slot / 2);
+};
+const keyName = (key: number) => (key < SURFACE_KEY ? FINISH_NAMES[key] : SURFACES[key - SURFACE_KEY].id.replace(/\./g, "_"));
+
+/** Cuts a group out of a block's geometry. Only textured groups keep texture coordinates. */
+function slice(geometry: THREE.BufferGeometry, start: number, count: number, textured: boolean): THREE.BufferGeometry {
   const result = new THREE.BufferGeometry();
-  for (const name of ["position", "normal", "color"]) {
+  for (const name of textured ? ["position", "normal", "color", "uv"] : ["position", "normal", "color"]) {
     const attribute = geometry.getAttribute(name);
-    const array = (attribute.array as Float32Array).slice(start * 3, (start + count) * 3);
-    result.setAttribute(name, new THREE.BufferAttribute(array, 3));
+    const size = attribute.itemSize;
+    const array = (attribute.array as Float32Array).slice(start * size, (start + count) * size);
+    result.setAttribute(name, new THREE.BufferAttribute(array, size));
   }
   return result;
+}
+
+/** Merging needs the same attributes everywhere, so untextured pieces get empty coordinates. */
+function matchTextureCoordinates(geometries: THREE.BufferGeometry[]): void {
+  if (!geometries.some((geometry) => geometry.getAttribute("uv"))) return;
+  for (const geometry of geometries) {
+    if (!geometry.getAttribute("uv")) geometry.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(geometry.getAttribute("position").count * 2), 2));
+  }
 }
 
 /**
@@ -74,6 +102,7 @@ class SceneBuilder {
   private readonly welded = new Map<string, THREE.BufferGeometry>();
   private readonly materialsByColor = new Map<string, THREE.Material[]>();
   private white?: THREE.Material[];
+  private readonly whiteSurfaces = new Map<number, THREE.Material>();
 
   constructor(private readonly merge: boolean) {}
 
@@ -97,11 +126,12 @@ class SceneBuilder {
   }
 
   /**
-   * The parts cut into pieces by finish, with each part's color baked in. With `bones`, each
-   * piece's vertices are bound to the bone of its part.
+   * The parts cut into pieces by material (see keyOfSlot), with each part's color baked in. With
+   * `bones`, each piece's vertices are bound to the bone of its part, or, for a skinned part, keep
+   * the bones and weights the block brings.
    */
-  private piecesByFinish(parts: Part[], toParent: THREE.Matrix4, bones?: Map<PartId, number>): Map<number, THREE.BufferGeometry[]> {
-    const byFinish = new Map<number, THREE.BufferGeometry[]>();
+  private piecesByMaterial(parts: Part[], toParent: THREE.Matrix4, bones?: Map<PartId, number | "skin">): Map<number, THREE.BufferGeometry[]> {
+    const byMaterial = new Map<number, THREE.BufferGeometry[]>();
     const tint = new THREE.Color();
 
     for (const part of parts) {
@@ -110,7 +140,7 @@ class SceneBuilder {
       tint.set(part.color);
 
       for (const { start, count, materialIndex = 0 } of geometry.groups) {
-        const piece = slice(geometry, start, count);
+        const piece = slice(geometry, start, count, slotInfo(materialIndex).surface !== undefined);
         piece.applyMatrix4(matrix);
         if (materialIndex % 2 === 0) {
           const colors = piece.getAttribute("color");
@@ -118,10 +148,15 @@ class SceneBuilder {
             colors.setXYZ(i, colors.getX(i) * tint.r, colors.getY(i) * tint.g, colors.getZ(i) * tint.b);
           }
         }
-        if (bones) {
+        const owner = bones?.get(part.id) ?? 0;
+        if (bones && owner === "skin" && geometry.getAttribute("skinIndex")) {
+          const own = (name: string) => (geometry.getAttribute(name).array as Uint16Array | Float32Array).slice(start * 4, (start + count) * 4);
+          piece.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(own("skinIndex"), 4));
+          piece.setAttribute("skinWeight", new THREE.Float32BufferAttribute(own("skinWeight"), 4));
+        } else if (bones) {
           const indices = new Uint16Array(count * 4);
           const weights = new Float32Array(count * 4);
-          const bone = bones.get(part.id) ?? 0;
+          const bone = owner === "skin" ? 0 : owner;
           for (let i = 0; i < count; i++) {
             indices[i * 4] = bone;
             weights[i * 4] = 1;
@@ -129,15 +164,18 @@ class SceneBuilder {
           piece.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(indices, 4));
           piece.setAttribute("skinWeight", new THREE.Float32BufferAttribute(weights, 4));
         }
-        const finish = Math.floor(materialIndex / 2);
-        byFinish.set(finish, [...(byFinish.get(finish) ?? []), piece]);
+        const key = keyOfSlot(materialIndex);
+        byMaterial.set(key, [...(byMaterial.get(key) ?? []), piece]);
       }
     }
-    return byFinish;
+    return byMaterial;
   }
 
-  /** Slots are finish * 2, so white tinted materials give every finish directly. */
-  private whiteMaterial(finish: number): THREE.Material {
+  /**
+   * A white material for a key: the parts' colors are baked into the vertices. Finish slots are
+   * finish * 2, so white tinted materials give every finish directly.
+   */
+  private whiteMaterial(key: number): THREE.Material {
     if (!this.white) {
       this.white = createBlockMaterials(0xffffff);
       FINISH_NAMES.forEach((name, index) => {
@@ -145,10 +183,18 @@ class SceneBuilder {
         this.white![index === 4 ? 9 : index * 2].name = name;
       });
     }
-    return this.white[finish === 4 ? 9 : finish * 2];
+    if (key < SURFACE_KEY) return this.white[key === 4 ? 9 : key * 2];
+    let material = this.whiteSurfaces.get(key);
+    if (!material) {
+      material = createSurfaceMaterial(SURFACES[key - SURFACE_KEY].id, 0xffffff);
+      material.name = keyName(key);
+      this.whiteSurfaces.set(key, material);
+    }
+    return material;
   }
 
   private static join(pieces: THREE.BufferGeometry[]): THREE.BufferGeometry {
+    matchTextureCoordinates(pieces);
     const merged = mergeGeometries(pieces);
     if (!merged) throw new Error("Falha ao juntar as peças");
     const welded = mergeVertices(merged);
@@ -159,24 +205,25 @@ class SceneBuilder {
 
   /** Collapses the parts into one mesh per finish. */
   private addMerged(parts: Part[], parent: THREE.Object3D, toParent: THREE.Matrix4, prefix: string): void {
-    for (const [finish, pieces] of this.piecesByFinish(parts, toParent)) {
-      const mesh = new THREE.Mesh(SceneBuilder.join(pieces), this.whiteMaterial(finish));
-      mesh.name = `${prefix}_${FINISH_NAMES[finish]}`;
+    for (const [key, pieces] of this.piecesByMaterial(parts, toParent)) {
+      const mesh = new THREE.Mesh(SceneBuilder.join(pieces), this.whiteMaterial(key));
+      mesh.name = `${prefix}_${keyName(key)}`;
       parent.add(mesh);
     }
   }
 
   /**
-   * One skinned mesh for a whole character, a material per finish. Every vertex follows only the
-   * bone of its part, so the blocks stay rigid.
+   * One skinned mesh for a whole character, a material per finish. Every vertex of a block person
+   * follows only the bone of its part, so the blocks stay rigid; a Realista person bends.
    */
-  addSkinned(parts: Part[], bones: Map<PartId, number>, parent: THREE.Object3D, toParent: THREE.Matrix4, name: string): THREE.SkinnedMesh {
-    const byFinish = [...this.piecesByFinish(parts, toParent, bones)].sort(([a], [b]) => a - b);
-    const geometries = byFinish.map(([, pieces]) => SceneBuilder.join(pieces));
+  addSkinned(parts: Part[], bones: Map<PartId, number | "skin">, parent: THREE.Object3D, toParent: THREE.Matrix4, name: string): THREE.SkinnedMesh {
+    const byMaterial = [...this.piecesByMaterial(parts, toParent, bones)].sort(([a], [b]) => a - b);
+    const geometries = byMaterial.map(([, pieces]) => SceneBuilder.join(pieces));
+    matchTextureCoordinates(geometries);
     const geometry = mergeGeometries(geometries, true);
     if (!geometry) throw new Error("Falha ao juntar as peças do personagem");
     for (const part of geometries) part.dispose();
-    const mesh = new THREE.SkinnedMesh(geometry, byFinish.map(([finish]) => this.whiteMaterial(finish)));
+    const mesh = new THREE.SkinnedMesh(geometry, byMaterial.map(([key]) => this.whiteMaterial(key)));
     mesh.name = name;
     parent.add(mesh);
     return mesh;
@@ -188,19 +235,26 @@ class SceneBuilder {
     for (const part of parts) {
       let geometry = this.welded.get(part.block);
       if (!geometry) {
-        geometry = mergeVertices(this.geometry(part.block));
+        // A person standing still needs no bones in the file.
+        const plain = this.geometry(part.block).clone();
+        plain.deleteAttribute("skinIndex");
+        plain.deleteAttribute("skinWeight");
+        geometry = mergeVertices(plain);
+        plain.dispose();
         this.welded.set(part.block, geometry);
       }
 
       let materials = this.materialsByColor.get(part.color);
       if (!materials) {
         materials = createBlockMaterials(part.color);
-        materials.forEach((material, slot) => {
-          const finish = FINISH_NAMES[Math.floor(slot / 2)];
-          material.name = slot % 2 === 0 ? `${finish}_${part.color.slice(1)}` : `${finish}_fixo`;
-        });
         this.materialsByColor.set(part.color, materials);
       }
+      fitBlockMaterials(materials, geometry, part.color);
+      materials.forEach((material, slot) => {
+        if (material.name || !isUsedMaterial(material)) return;
+        const name = keyName(keyOfSlot(slot));
+        material.name = slot % 2 === 0 ? `${name}_${part.color.slice(1)}` : `${name}_fixo`;
+      });
 
       const mesh = new THREE.Mesh(geometry, materials);
       mesh.name = `${getBlock(part.block).name} ${part.id}`;
@@ -343,7 +397,7 @@ function addCharacter(
 
   const bones = buildSkeleton(rig);
   node.add(bones[0]);
-  const owners = new Map(rig.parts.map((part) => [part.id, part.bone]));
+  const owners = new Map(rig.parts.map((part): [PartId, number | "skin"] => [part.id, part.skin ? "skin" : part.bone]));
   const mesh = builder.addSkinned(rig.parts.map((part) => parts.get(part.id)!), owners, node, frame.clone().invert(), names.mesh);
   node.updateMatrixWorld(true);
   mesh.bind(new THREE.Skeleton(bones));
@@ -417,6 +471,8 @@ export function addVertexColorHint(scene: THREE.Scene): void {
   for (let i = 1; i < normals.length; i += 3) normals[i] = 1;
   geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
   geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(vertices * 3).fill(1), 3));
+  // glTF requires texture coordinates wherever a textured material is used.
+  geometry.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(vertices * 2), 2));
   slots.forEach((_, slot) => geometry.addGroup(slot * 3, 3, slot));
 
   const hint = new THREE.Mesh(geometry, slots);
@@ -447,6 +503,8 @@ function physicsPlugin(physics: Physics) {
 
 export async function exportGlb(parts: Part[], options: ExportOptions): Promise<ArrayBuffer> {
   if (options.animations && Object.values(options.animations).some((clips) => clips.length > 0)) await loadAnimationPack();
+  // Textures go into the file, so their images have to be here first.
+  await surfacesReady(new Set(parts.flatMap((part) => surfacesOfShape(getBlock(part.block).shape))));
   const scene = buildExportScene(parts, options);
   addVertexColorHint(scene);
   const exporter = new GLTFExporter();

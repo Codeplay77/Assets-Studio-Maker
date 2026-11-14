@@ -5,6 +5,8 @@ import { cityBlocks } from "./city.ts";
 import { homeBlocks } from "./family/homes.ts";
 import { interiorBlocks } from "./interior.ts";
 import { interiorModelBlocks } from "./interior.generated.ts";
+import { peopleBlocks } from "./people.generated.ts";
+import { realisticModelBlocks } from "./realistic.generated.ts";
 import { bakedBlocks } from "./family/baked.ts";
 import { lowPolyBlocks } from "./lowpoly.ts";
 import { modelBlocks } from "./models.generated.ts";
@@ -62,4 +64,6 @@ export const blocks: BlockDef[] = [
   ...interiorBlocks,
   ...libraryModels,
   ...interiorModelBlocks,
+  ...realisticModelBlocks,
+  ...peopleBlocks,
 ];

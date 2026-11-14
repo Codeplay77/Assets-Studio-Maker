@@ -33,8 +33,9 @@ const CITY_KITS: Record<ArtStyle, CityKit> = {
     sidewalkTop: SIDEWALK_HEIGHT,
     park: "road.grass",
     parkTop: 0.1,
-    lamp: "city.lamp",
-    bench: "city.bench",
+    // Scanned street furniture from Poly Haven.
+    lamp: "rz.polyhaven.street_lamp_01",
+    bench: "rz.polyhaven.painted_wooden_bench",
   },
   lowpoly: {
     road: {
@@ -212,6 +213,7 @@ function placePark(asm: Assembler, rng: Rng, plan: CityPlan, i: number, j: numbe
   for (let n = rng.int(2, 4); n > 0; n--) {
     buildTree(asm, rng.fork(`tree ${i} ${j} ${n}`), {
       style,
+      light: true,
       position: [x + rng.range(-3, 3), kit.parkTop, z + rng.range(-3, 3)],
       kind: rng.chance(0.7) ? "leafy" : "pine",
     });
@@ -252,6 +254,7 @@ function placeLot(asm: Assembler, rng: Rng, plan: CityPlan, i: number, j: number
   const position: [number, number, number] = [x, kit.sidewalkTop, z];
   const lot = rng.fork(`lot ${i} ${j}`);
 
-  if (character === 0) buildHouse(asm, lot, { style, position, yawSteps });
-  else buildBuilding(asm, lot, { style, position, yawSteps, minFloors: 2, maxFloors: character === 1 ? Math.min(5, plan.tallest) : plan.tallest });
+  const room: [number, number] = [ROAD_TILE - 0.3, ROAD_TILE - 0.3];
+  if (character === 0) buildHouse(asm, lot, { style, position, yawSteps, lot: room });
+  else buildBuilding(asm, lot, { style, position, yawSteps, minFloors: 2, maxFloors: character === 1 ? Math.min(5, plan.tallest) : plan.tallest, lot: room });
 }

@@ -3,27 +3,19 @@
 //
 //   node scripts/import-interior.ts <downloads> [--debug <folder>]
 //
-// <downloads> holds the CC0 packs, each file only parsed as data:
+// <downloads> holds the CC0 pack, each file only parsed as data:
 //   kenney-furniture/x/Models/*.obj     Kenney Furniture Kit 1.0, from OpenGameArt (Low poly)
-//   quaternius-uhip/*.glb               Quaternius Ultimate House Interior Pack, from Poly Pizza (Realista)
-//   quaternius-furniture/*.glb          Quaternius Furniture Pack, from Poly Pizza (Realista)
-//   polyhaven/<id>/info.json            Poly Haven downloads (Realista)
-//   polyhaven-prepared/<id>.tris        the same models reduced by tools/blender/prepare_polyhaven.py
+//
+// Realista furniture is photographed and textured: see scripts/import-realistic.ts.
 //
 // Every model ends up facing +Z, resting on y = 0 and centered on its footprint. The Kenney kit
 // is also rebuilt out of cubes for the Blocos style. --debug writes each result as an OBJ with
 // vertex colors, to look at them in Blender before using them.
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Vector3 } from "three";
-import { extract, type Rgb } from "./gltf-read.ts";
-import {
-  KENNEY_NAMES,
-  POLYHAVEN_NAMES,
-  QUATERNIUS_CLASSIC_NAMES,
-  QUATERNIUS_NAMES,
-  type InteriorName,
-} from "./interior-names.ts";
+import type { Rgb } from "./gltf-read.ts";
+import { KENNEY_NAMES, type InteriorName } from "./interior-names.ts";
 
 type Finish = "matte" | "metal" | "glass" | "tint";
 
@@ -52,8 +44,6 @@ interface Kit {
   turns?: Record<string, number>;
   /** Per-model scales, for files saved in other units. */
   scales?: Record<string, number>;
-  /** Models left out because they come out badly once reduced. */
-  skip?: string[];
   models: () => Model[];
   /** Also builds the model out of cubes, for the Blocos style, with this prefix. */
   voxels?: string;
@@ -111,40 +101,6 @@ function readObj(file: string): Face[] {
   return faces;
 }
 
-const finishOfMaterial = (name = ""): Finish =>
-  /glass/i.test(name) ? "tint" : /metal|gold|chrome|steel/i.test(name) ? "metal" : "matte";
-
-function readGlb(file: string, brighten: number): Face[] {
-  return extract(file, { brighten }).map(({ corners, colors, material }) => ({
-    p: corners.map((corner) => corner.p) as Face["p"],
-    n: corners.map((corner) => corner.n) as Face["n"],
-    c: colors,
-    finish: finishOfMaterial(material),
-  }));
-}
-
-const TRIS_FINISHES: Finish[] = ["matte", "metal", "tint"];
-
-/** Reads what tools/blender/prepare_polyhaven.py writes. */
-function readTris(file: string): Face[] {
-  const data = readFileSync(file);
-  const count = data.readUInt32LE(0);
-  const floats = new Float32Array(data.buffer.slice(data.byteOffset + 4, data.byteOffset + 4 + count * 27 * 4));
-  const finishes = data.subarray(4 + count * 27 * 4);
-  const faces: Face[] = [];
-  for (let t = 0; t < count; t++) {
-    const corner = (c: number) => floats.subarray((t * 3 + c) * 9, (t * 3 + c + 1) * 9);
-    const cs = [corner(0), corner(1), corner(2)];
-    faces.push({
-      p: cs.map((f) => new Vector3(f[0], f[1], f[2])) as Face["p"],
-      n: cs.map((f) => new Vector3(f[3], f[4], f[5]).normalize()) as Face["n"],
-      c: cs.map((f) => [Math.round(f[6] * 255), Math.round(f[7] * 255), Math.round(f[8] * 255)]) as Face["c"],
-      finish: TRIS_FINISHES[finishes[t]] ?? "matte",
-    });
-  }
-  return faces;
-}
-
 const listFiles = (folder: string, pattern: RegExp) =>
   readdirSync(folder).filter((name) => pattern.test(name)).sort();
 
@@ -161,50 +117,6 @@ const KITS: Kit[] = [
     models: () => {
       const folder = path.join(source, "kenney-furniture/x/Models");
       return listFiles(folder, /\.obj$/i).map((file) => ({ name: file.replace(/\.obj$/i, ""), faces: readObj(path.join(folder, file)) }));
-    },
-  },
-  {
-    id: "quaternius",
-    prefix: "rz.quaternius",
-    names: QUATERNIUS_NAMES,
-    // Drawn twice the real size: its doors are 4.2 m tall.
-    scale: 0.5,
-    yaw: 0,
-    models: () => {
-      const folder = path.join(source, "quaternius-uhip");
-      return listFiles(folder, /\.glb$/i).map((file) => ({ name: file.replace(/\.glb$/i, ""), faces: readGlb(path.join(folder, file), 2) }));
-    },
-  },
-  {
-    id: "quaternius-classic",
-    prefix: "rz.quaternius-classic",
-    names: QUATERNIUS_CLASSIC_NAMES,
-    scale: 1,
-    yaw: 0,
-    // Each piece came at its own scale; these bring them to real sizes (a 2.1 m door, a 0.76 m desk).
-    scales: {
-      Bed_Double: 0.5, Bed_Twin: 0.5, Bookcase_with_Books: 0.6, Chair: 0.85, Chair_2: 0.62, Closet: 0.68,
-      Desk: 0.82, Door: 0.68, Door_2: 0.67, Door_3: 0.67, Short_Closet: 0.68, Sofa: 0.5, Sofa_2: 0.5, Sofa_3: 0.5,
-      Table: 0.91, Table_2: 0.91,
-    },
-    models: () => {
-      const folder = path.join(source, "quaternius-furniture");
-      return listFiles(folder, /\.glb$/i).map((file) => ({ name: file.replace(/\.glb$/i, ""), faces: readGlb(path.join(folder, file), 2) }));
-    },
-  },
-  {
-    id: "polyhaven",
-    prefix: "rz.polyhaven",
-    names: POLYHAVEN_NAMES,
-    scale: 1,
-    yaw: 0,
-    // The file is in decimeters; its page lists it as 1.1 x 0.5 x 2.14 m.
-    scales: { steel_frame_shelves_01: 0.1 },
-    // A draped cloth crumples, pictures lose their canvas and a glass top turns into a smear.
-    skip: ["dining_table", "hanging_picture_frame_01", "hanging_picture_frame_02", "modern_coffee_table_02"],
-    models: () => {
-      const folder = path.join(source, "polyhaven-prepared");
-      return listFiles(folder, /\.tris$/i).map((file) => ({ name: file.replace(/\.tris$/i, ""), faces: readTris(path.join(folder, file)) }));
     },
   },
 ];
@@ -469,7 +381,7 @@ for (const kit of KITS) {
   let count = 0;
   let triangles = 0;
   let voxelTriangles = 0;
-  for (const model of kit.models().filter(({ name }) => !kit.skip?.includes(name))) {
+  for (const model of kit.models()) {
     const known = kit.names[model.name];
     if (!known) console.warn(`sem nome em português: ${kit.id}/${model.name}`);
     const label = known?.label ?? model.name;
@@ -506,15 +418,6 @@ writeFileSync(
   path.join(repo, "src/blocks/definitions/interior.generated.ts"),
   `// Generated by scripts/import-interior.ts. Do not edit by hand.\nimport type { BlockDef } from "../types.ts";\n\nexport const interiorModelBlocks: BlockDef[] = [\n${blockSources.map((item) => `  ${item},`).join("\n")}\n];\n`,
 );
-
-if (existsSync(path.join(source, "polyhaven"))) {
-  const credits = readdirSync(path.join(source, "polyhaven"))
-    .filter((id) => existsSync(path.join(source, "polyhaven", id, "info.json")) && existsSync(path.join(source, "polyhaven-prepared", `${id}.tris`)))
-    .filter((id) => !KITS.find((kit) => kit.id === "polyhaven")?.skip?.includes(id))
-    .map((id) => JSON.parse(readFileSync(path.join(source, "polyhaven", id, "info.json"), "utf8")) as { id: string; name: string; authors: Record<string, string> })
-    .map((info) => `| ${info.name} | ${Object.keys(info.authors).join(", ")} | [${info.id}](https://polyhaven.com/a/${info.id}) |`);
-  writeFileSync(path.join(debugFolder ?? source, "polyhaven-credits.md"), `| Modelo | Autor | Página |\n| --- | --- | --- |\n${credits.join("\n")}\n`);
-}
 
 console.log(stats.join("\n"));
 console.log(`Total: ${blockSources.length} blocos, ${(packSize / 1048576).toFixed(1)} MB`);

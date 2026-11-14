@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { hasSurface, TILING_SURFACES } from "../blocks/surfaces";
 import type { Finish, ShapeMaterial, Vec3 } from "../core/types";
 import { bevel } from "./bevel";
 import { booleanMeshes, type BooleanMode } from "./boolean";
@@ -261,6 +262,12 @@ function materialFrom(args: Args): ShapeMaterial {
     material.finish = args.finish as Finish;
   }
   if (args.shade !== undefined) material.shade = num(args, "shade", 1, 0, 1);
+  if (args.texture !== undefined && args.texture !== null && args.texture !== "") {
+    if (typeof args.texture !== "string" || !hasSurface(args.texture)) {
+      throw new Error(`"texture" aceita: ${TILING_SURFACES.map((surface) => surface.id).join(", ")}`);
+    }
+    material.texture = args.texture;
+  }
   return material;
 }
 

@@ -9,6 +9,7 @@ import {
   type BlockDef,
 } from "../blocks/catalog";
 import { buildGeometry } from "../blocks/geometry";
+import { TILING_SURFACES } from "../blocks/surfaces";
 import type {
   Command,
   CustomShape,
@@ -62,7 +63,8 @@ const FACE_SELECTOR =
   'Choose faces with "all" or an object combining: ids, normal (faces pointing that way, with optional tolerance in degrees), inside {min,max} (face centers in a box), material, nearest (the face closest to a point), last ("caps" or "sides" from the previous operation).';
 const VERTEX_SELECTOR =
   'Choose vertices with "all" or an object combining: faces (any face selector), ids, inside {min,max}, nearest.';
-const PIECE_HELP = `Each piece has "type" and optional at, rot (degrees), scale, color (#rrggbb, otherwise it follows the part's color), finish (matte, gloss, metal, glass, glow). Types and their parameters, in meters:
+const TEXTURE_HELP = `texture (a photographed material laid on at its real size, for the Realista style; give it color "#ffffff" to show the photo's own colors, or a color to tint it): ${TILING_SURFACES.map((surface) => `${surface.id} (${surface.name})`).join(", ")}.`;
+const PIECE_HELP = `Each piece has "type" and optional at, rot (degrees), scale, color (#rrggbb, otherwise it follows the part's color), finish (matte, gloss, metal, glass, glow), ${TEXTURE_HELP} Types and their parameters, in meters:
 box size[3]; rounded_box size[3] radius segments; plane width depth columns rows; wedge size[3] (tall at -Z); frustum bottom[w,d] top[w,d] height; cylinder radius (or radiusTop, radiusBottom) height segments; cone radius height segments; sphere radius segments rows; dome radius segments rows; capsule radius length segments rows; torus radius tube segments tubeSegments (hole along Y);
 lathe profile[[radius,y],...] segments (revolved around Y, for vases, wheels, bottles);
 loft rings[[position,halfWidth,halfDepth,squareness?,offset?],...] axis(y|z) segments steps (a smooth body through cross-sections, for torsos, heads, fuselages; squareness 2 is an ellipse, higher is boxier);
@@ -74,7 +76,7 @@ extrude faces distance individual? (pull faces out, negative digs in; last.caps 
 move vertices offset softRadius?; rotate vertices angles pivot? softRadius?; scale vertices factor pivot? softRadius? (softRadius makes nearby vertices follow, fading with distance, for organic pulls); set_vertices positions[{id,position}];
 mirror axis side? (replaces one side with the reflection of the other, sewn at the plane: model half, then mirror); bisect axis side (cuts at a plane through the origin);
 delete_faces faces; delete_vertices vertices; weld vertices; weld_close distance; fill vertices (makes a face through them); flip faces?;
-paint faces color? finish? shade? (no color makes faces follow the part's color again); roughen vertices? amount frequency seed (rocks, bark); add_piece piece (adds another piece to the shape);
+paint faces color? finish? shade? texture? (no color makes faces follow the part's color again; no texture removes it); roughen vertices? amount frequency seed (rocks, bark); add_piece piece (adds another piece to the shape);
 boolean mode(subtract|union|intersect) and piece (any piece, placed with at/rot/scale) or shape (id of another shape, with optional at, rot, scale) (real cuts between closed shapes: windows, doors, pipes, keyholes; walls of a cut take the tool's color);
 hole faces size shape(round|square) depth? (a straight hole from the center of each face along its direction; without depth it goes all the way through);
 bevel edges amount segments? (cuts the chosen edges; segments above 1 makes them round, for a finished, less blocky look). Choose edges with "all" or an object combining: ids[[a,b],...], sharp (minimum angle between the two faces in degrees, usually 30), faces (any face selector: the outline of those faces), vertices (any vertex selector: edges with both ends chosen). Last.caps are the new faces;

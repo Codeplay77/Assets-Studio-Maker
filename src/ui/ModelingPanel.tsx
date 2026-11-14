@@ -21,6 +21,7 @@ import {
   Trash2,
   Waves,
 } from "lucide-react";
+import { SURFACE_GROUPS, TILING_SURFACES } from "../blocks/surfaces";
 import { useEditor, type MeshMode } from "../core/store";
 import type { CustomShape, Finish } from "../core/types";
 import type { BrushKind } from "../modeling/sculpt";
@@ -449,7 +450,7 @@ export function ModelingPanel({ shape }: { shape: CustomShape }) {
       {chosenFaces > 0 && (
         <section className="tool-section">
           <div className="field-label">Cor das faces</div>
-          <Palette value={firstMaterial?.color ?? ""} onPick={(color) => void paintSelected({ color, finish: firstMaterial?.finish })} />
+          <Palette value={firstMaterial?.color ?? ""} onPick={(color) => void paintSelected({ color, finish: firstMaterial?.finish, texture: firstMaterial?.texture })} />
           <div className="finish-row">
             <select
               className="input"
@@ -472,6 +473,28 @@ export function ModelingPanel({ shape }: { shape: CustomShape }) {
               Cor da peça
             </button>
           </div>
+          <div className="field-label">Textura</div>
+          <select
+            className="input texture-select"
+            aria-label="Textura"
+            title="Foto de um material de verdade, colada nas faces no tamanho real"
+            value={firstMaterial?.texture ?? ""}
+            onChange={(event) =>
+              // A texture shows its own colors; the palette can still tint it afterwards.
+              void paintSelected(event.target.value ? { color: "#ffffff", texture: event.target.value } : { color: firstMaterial?.color })
+            }
+          >
+            <option value="">Sem textura</option>
+            {SURFACE_GROUPS.map((group) => (
+              <optgroup key={group.id} label={group.name}>
+                {TILING_SURFACES.filter((surface) => surface.group === group.id).map((surface) => (
+                  <option key={surface.id} value={surface.id}>
+                    {surface.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
         </section>
       )}
     </>
