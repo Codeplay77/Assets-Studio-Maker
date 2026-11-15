@@ -10,7 +10,10 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import path from "node:path";
 import { PNG } from "pngjs";
 import { TILING_SURFACES, type SurfaceDef } from "../src/blocks/surfaces.ts";
-import { REALISTIC_MODELS, type Mount, type RealisticModel } from "./realistic-names.ts";
+import { Vector3 } from "three";
+import { REALISTIC_MODELS, type Held, type Mount, type RealisticModel } from "./realistic-names.ts";
+import { gripOf, type Triangle } from "./weapon-grip.ts";
+import type { Turn } from "./weapon-names.ts";
 
 const [downloads, prepared] = process.argv.slice(2);
 if (!downloads || !prepared) throw new Error("Informe a pasta dos downloads e a dos modelos preparados.");
@@ -221,6 +224,43 @@ function writeChunk({ positions, normals, uvs, indices }: Chunk) {
   return shape;
 }
 
+const AXES = { x: new Vector3(1, 0, 0), y: new Vector3(0, 1, 0), z: new Vector3(0, 0, 1) };
+
+/** Turns a model about the world's axes, one turn after the other, normals included. */
+function turnChunks(chunks: Chunk[], turns: Turn): void {
+  const point = new Vector3();
+  for (const [axis, degrees] of turns) {
+    const radians = (degrees * Math.PI) / 180;
+    for (const { positions, normals } of chunks) {
+      for (const values of [positions, normals]) {
+        for (let i = 0; i < values.length; i += 3) {
+          point.set(values[i], values[i + 1], values[i + 2]).applyAxisAngle(AXES[axis], radians);
+          values[i] = point.x;
+          values[i + 1] = point.y;
+          values[i + 2] = point.z;
+        }
+      }
+    }
+  }
+}
+
+/** For a piece held in a hand: its grip first, where a hand's grip socket takes it, then its bottom and top. */
+function heldSockets(chunks: Chunk[], held: Held) {
+  const triangles: Triangle[] = chunks.flatMap(({ positions, indices }) => {
+    const corner = (k: number) => new Vector3(positions[k * 3], positions[k * 3 + 1], positions[k * 3 + 2]);
+    const out: Triangle[] = [];
+    for (let t = 0; t < indices.length; t += 3) out.push({ p: [corner(indices[t]), corner(indices[t + 1]), corner(indices[t + 2])] });
+    return out;
+  });
+  const { min, max } = bounds(chunks);
+  const center = [round((min[0] + max[0]) / 2), round((min[2] + max[2]) / 2)];
+  return [
+    { id: "grip", p: gripOf(triangles, held).toArray().map(round), n: [0, -1, 0] },
+    { id: "bottom", p: [center[0], round(min[1]), center[1]], n: [0, -1, 0] },
+    { id: "top", p: [center[0], round(max[1]), center[1]], n: [0, 1, 0] },
+  ];
+}
+
 function sockets(chunks: Chunk[], mount: Mount | undefined) {
   const { min, max } = bounds(chunks);
   const center = [round((min[0] + max[0]) / 2), round((min[1] + max[1]) / 2), round((min[2] + max[2]) / 2)];
@@ -249,6 +289,7 @@ interface Entry {
   blockId: string;
   label: string;
   folder: string;
+  held?: Held;
   /** For a light version: the folder of the full one, whose images it shares. */
   full?: string;
 }
@@ -265,11 +306,12 @@ function entriesOf(id: string, model: RealisticModel): Entry[] {
     : [];
   const main: Entry[] =
     versions.length === 0
-      ? [{ blockId: id, label: model.label, folder: path.join(prepared, id) }]
+      ? [{ blockId: id, label: model.label, folder: path.join(prepared, id), held: model.held }]
       : versions.map((name, index) => ({
           blockId: index === 0 ? id : `${id}_${index + 1}`,
-          label: index === 0 ? model.label : `${model.label} (variação ${index + 1})`,
+          label: model.parts?.[index]?.label ?? (index === 0 ? model.label : `${model.label} (variação ${index + 1})`),
           folder: path.join(prepared, name),
+          held: model.parts?.[index]?.held ?? model.held,
         }));
   return main.flatMap((entry) =>
     existsSync(path.join(`${entry.folder}~leve`, "mesh.json"))
@@ -281,7 +323,7 @@ function entriesOf(id: string, model: RealisticModel): Entry[] {
 /** The surface each material of a model became, by material name, for its light copy to share. */
 const surfacesOfFolder = new Map<string, Map<string, string>>();
 
-for (const [source, model] of Object.entries(REALISTIC_MODELS)) for (const { blockId: id, label, folder, full } of entriesOf(source, model)) {
+for (const [source, model] of Object.entries(REALISTIC_MODELS)) for (const { blockId: id, label, folder, full, held } of entriesOf(source, model)) {
   if (!existsSync(path.join(folder, "mesh.json"))) {
     console.warn(`sem modelo preparado: ${id}`);
     continue;
@@ -289,6 +331,7 @@ for (const [source, model] of Object.entries(REALISTIC_MODELS)) for (const { blo
   const mesh = JSON.parse(readFileSync(path.join(folder, "mesh.json"), "utf8")) as { materials: PreparedMaterial[] };
   const chunks = readChunks(folder, mesh.materials);
   for (const chunk of chunks) if (chunk.material.name === "impostor") cropImpostor(chunk, folder);
+  if (held?.turn) turnChunks(chunks, held.turn);
   normalize(chunks, model.scale ?? 1);
 
   let textured = 0;
@@ -344,8 +387,9 @@ for (const [source, model] of Object.entries(REALISTIC_MODELS)) for (const { blo
       category: model.category,
       color: "#ffffff",
       shape: { kind: "compound", pieces },
-      sockets: sockets(chunks, model.mount),
-      ...(model.mount === "w" || model.mount === "c" ? {} : { upright: true }),
+      sockets: held ? heldSockets(chunks, held) : sockets(chunks, model.mount),
+      // A held piece is not upright: an upright block never snaps onto a socket, and it belongs on a hand's.
+      ...(held || model.mount === "w" || model.mount === "c" ? {} : { upright: true }),
     }),
   );
   if (id !== source) continue;

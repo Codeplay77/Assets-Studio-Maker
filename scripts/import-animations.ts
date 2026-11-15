@@ -1,10 +1,11 @@
-// Converts the CC0 human animations of Mesh2Motion, and the editor's own dances and fighting moves,
-// into the editor's animation pack.
+// Converts the CC0 human animations of Mesh2Motion, and the editor's own dances, fighting moves and
+// everyday activities, into the editor's animation pack.
 //
-//   node scripts/import-animations.ts <folder with human-base-animations.glb and human-addon-animations.glb> <dancas.glb> <combate.glb>
+//   node scripts/import-animations.ts <folder with human-base-animations.glb and human-addon-animations.glb> <dancas.glb> <combate.glb> <atividades.glb>
 //
-// The editor's own clips are made on the same skeleton by tools/blender/make_dances.py and
-// tools/blender/make_combat.py; any number of their GLBs may follow the folder.
+// The editor's own clips are made on the same skeleton by tools/blender/make_dances.py,
+// tools/blender/make_combat.py and tools/blender/make_activities.py; any number of their GLBs may
+// follow the folder.
 // The files come from https://github.com/Mesh2Motion/mesh2motion-app (models, rigs and animations
 // are CC0). Each file is only parsed as data; nothing from it is ever executed.
 //
@@ -50,8 +51,8 @@ const TIP: Record<string, string> = {
 };
 
 const CATEGORIES = [
-  "Parado", "Andar e correr", "Pular e esquivar", "Luta", "Espada e escudo", "Armas", "Magia", "Gestos",
-  "Dança", "Exercício", "Tarefas", "Escalar e nadar", "Voar e levitar", "Sentar e deitar", "Dano e morte", "Zumbi",
+  "Parado", "Andar e correr", "Veículos e montaria", "Pular e esquivar", "Luta", "Espada e escudo", "Armas", "Magia", "Gestos",
+  "Dança", "Música", "Esportes", "Exercício", "Tarefas", "Escalar e nadar", "Voar e levitar", "Sentar e deitar", "Dano e morte", "Zumbi",
 ] as const;
 type Category = (typeof CATEGORIES)[number];
 
@@ -261,6 +262,44 @@ const NAMES: Record<string, [string, Category]> = {
   Combate_Vitoria: ["Combate: comemorar vitória", "Luta"],
   Capoeira_Ginga: ["Capoeira: ginga", "Luta"],
   Capoeira_Meia_Lua: ["Capoeira: meia-lua de frente", "Luta"],
+  // Made for the editor (tools/blender/make_activities.py).
+  Carro_Dirigindo: ["Carro: dirigindo", "Veículos e montaria"],
+  Carro_Curvas: ["Carro: fazendo curvas", "Veículos e montaria"],
+  Kart_Pilotando: ["Kart: pilotando", "Veículos e montaria"],
+  Moto_Pilotando: ["Moto: pilotando", "Veículos e montaria"],
+  Bicicleta_Pedalando: ["Bicicleta: pedalando", "Veículos e montaria"],
+  Cavalo_Parado: ["Cavalo: montado, parado", "Veículos e montaria"],
+  Cavalo_Trote: ["Cavalo: trote", "Veículos e montaria"],
+  Cavalo_Galope: ["Cavalo: galope", "Veículos e montaria"],
+  Canoa_Remando: ["Canoa: remando", "Veículos e montaria"],
+  Skate_Impulsionando: ["Skate: impulsionando", "Veículos e montaria"],
+  Varrer: ["Varrer", "Tarefas"],
+  Martelar: ["Martelar", "Tarefas"],
+  Serrar: ["Serrar", "Tarefas"],
+  Cavar: ["Cavar com pá", "Tarefas"],
+  Pescar_Lancar: ["Pescar: lançar a vara", "Tarefas"],
+  Pescar_Esperando: ["Pescar: esperando o peixe", "Tarefas"],
+  Cozinhar: ["Cozinhar: mexer a panela", "Tarefas"],
+  Digitar: ["Digitar no computador", "Tarefas"],
+  Celular: ["Mexer no celular", "Tarefas"],
+  Levantar_Caixa: ["Levantar caixa do chão", "Tarefas"],
+  Chutar_Bola: ["Futebol: chutar a bola", "Esportes"],
+  Embaixadinha: ["Futebol: embaixadinha", "Esportes"],
+  Goleiro: ["Futebol: goleiro", "Esportes"],
+  Arremesso_Basquete: ["Basquete: arremessar", "Esportes"],
+  Pular_Corda: ["Pular corda", "Esportes"],
+  Agachamento: ["Agachamento", "Exercício"],
+  Alongamento: ["Alongamento", "Exercício"],
+  Aplaudir: ["Aplaudir", "Gestos"],
+  Apontar: ["Apontar", "Gestos"],
+  Dar_de_Ombros: ["Dar de ombros", "Gestos"],
+  Cocar_Cabeca: ["Coçar a cabeça", "Gestos"],
+  Olhar_Relogio: ["Olhar o relógio", "Gestos"],
+  Rir: ["Rir", "Gestos"],
+  Chorar: ["Chorar", "Gestos"],
+  Selfie: ["Tirar selfie", "Gestos"],
+  Violao: ["Tocar violão", "Música"],
+  Bateria: ["Tocar bateria", "Música"],
 };
 
 /**
@@ -279,6 +318,8 @@ const ONCE = new Set([
   "Sword_Dash_RM", "Sword_Regular_A", "Sword_Regular_A_Rec", "Sword_Regular_B", "Sword_Regular_B_Rec", "Sword_Regular_C", "Sword_Regular_C_RM",
   "Sword_Regular_Combo", "Throw Object", "Two-hand Blast", "Victory", "Victory Fist Pump", "Zombie_Rise",
   ...Object.keys(NAMES).filter((id) => /^(Combate|Capoeira)_/.test(id) && !["Combate_Guarda", "Combate_Atordoado", "Capoeira_Ginga"].includes(id)),
+  "Pescar_Lancar", "Levantar_Caixa", "Chutar_Bola", "Arremesso_Basquete", "Alongamento", "Apontar", "Dar_de_Ombros", "Cocar_Cabeca",
+  "Olhar_Relogio", "Selfie",
 ]);
 
 interface Gltf {

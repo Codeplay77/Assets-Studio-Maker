@@ -4,20 +4,10 @@
 #   blender --factory-startup -b --python tools/blender/make_combat.py -- <human-base-animations.glb> <combate.glb> [move,move,...] [--previa <folder>]
 #
 # Every move starts and ends in the same guard as Combate_Guarda, so a game can chain them. A move
-# is a few key poses (see poser.py for what a pose says) on frames at 30 per second. To look alive
-# instead of robotic:
-#
-# - Between keys every value follows a smooth curve that keeps its speed through a key, and only
-#   stops where it turns back (a monotone cubic). A blow instead speeds up into its key ("snap"),
-#   arriving half again as fast as its average, and stops there, as a fist does on a target; a
-#   recoil leaves fast and slows down ("out").
-# - Body parts do not move together: the hips lead, the chest follows, the arms come after and the
-#   head arrives last, a frame or two each, as the weight goes from the legs up to the fist.
-# - Nothing is ever still: breath moves the chest, the head and the hands drift a little, in waves
-#   that come back to nothing at the first and last frames.
-# - The head keeps looking ahead while the body turns, as a fighter keeps the eyes on the opponent.
-#
-# --previa renders the mannequin at a few moments of each move into that folder, to review them.
+# is a few key poses (see poser.py for what a pose says) on frames at 30 per second, eased by
+# moves.py so it does not look robotic. The head keeps looking ahead while the body turns, as a
+# fighter keeps the eyes on the opponent. --previa renders the mannequin at a few moments of each
+# move into that folder, to review them.
 
 import math
 import os
@@ -27,186 +17,18 @@ script = globals().get("__file__") or sys.argv[sys.argv.index("--python") + 1]
 sys.path.insert(0, os.path.dirname(os.path.abspath(script)))
 
 import poser  # noqa: E402
-from poser import BASE, P, apply, bake, clear_animation, finish_curves, key, mirror  # noqa: E402
+from poser import P, mirror  # noqa: E402
 
-args = sys.argv[sys.argv.index("--") + 1:]
-PREVIEW = None
-if "--previa" in args:
-    PREVIEW = args[args.index("--previa") + 1]
-    args = args[:args.index("--previa")]
-SOURCE, OUT = args[0], args[1]
-ONLY = set(args[2].split(",")) if len(args) > 2 and args[2] else None
-
-# --- curves --------------------------------------------------------------------------------------
-
-# Every value of a pose, in order, with how many numbers it has and the body part it belongs to.
-SCHEMA = [
-    ("hips", 3, "hips"), ("hipr", 3, "hips"),
-    ("chest", 3, "chest"), ("sh", 2, "chest"), ("reach", 2, "chest"),
-    ("head", 3, "head"),
-    ("hl", 3, "arms"), ("hr", 3, "arms"), ("el", 3, "arms"), ("er", 3, "arms"), ("fing", 2, "arms"),
-    ("fl", 6, "legs"), ("fr", 6, "legs"), ("knee", 1, "legs"), ("kl", 3, "legs"), ("kr", 3, "legs"), ("kw", 2, "legs"),
-]
-# How many frames each part comes after the moment of a key: the hips lead and the head comes last.
-LAG = {"hips": -1.5, "chest": -0.5, "arms": 0.0, "head": 1.5, "legs": 0.0}
-
-
-def flatten(pose):
-    """A pose as numbers, every value filled in, in the order of SCHEMA."""
-    values = []
-    for name, size, _ in SCHEMA:
-        value = pose.get(name)
-        if name in ("el", "er") and value is None:
-            value = (0.30 if name == "el" else -0.30, -0.45, -0.60)
-        elif name in ("kl", "kr") and value is None:
-            value = (0.0, 0.0, 0.0)
-        elif name == "kw" and value is None:
-            value = (1.0 if pose.get("kl") is not None else 0.0, 1.0 if pose.get("kr") is not None else 0.0)
-        elif name == "fing" and value is None:
-            value = (1.0, 1.0)
-        elif name in ("fl", "fr") and len(value) == 5:
-            # Feet may also roll, the sole turning sideways.
-            value = (*value, 0.0)
-        elif name == "knee":
-            value = (value,)
-        values.extend(float(v) for v in value)
-    return values
-
-
-def unflatten(values):
-    pose = {}
-    at = 0
-    for name, size, _ in SCHEMA:
-        part = tuple(values[at:at + size])
-        pose[name] = part[0] if name == "knee" else part
-        at += size
-    return pose
-
-
-def slopes(times, values, eases, loop, period):
-    """
-    How fast a value goes through each key: as fast as its neighbors ask, but not at all where it
-    turns back, and never so fast that it overshoots (Fritsch and Carlson's monotone cubic). A key
-    that a blow starts from is a stop.
-    """
-    n = len(times)
-    out = []
-    for i in range(n):
-        if not loop and (i == 0 or i == n - 1):
-            out.append(0.0)
-            continue
-        before, after = (i - 1) % n, (i + 1) % n
-        t0 = times[before] - (period if loop and i == 0 else 0)
-        t2 = times[after] + (period if loop and i == n - 1 else 0)
-        d0 = (values[i] - values[before]) / max(times[i] - t0, 1e-6)
-        d1 = (values[after] - values[i]) / max(t2 - times[i], 1e-6)
-        if d0 * d1 <= 0 or eases[after] == "snap":
-            out.append(0.0)
-            continue
-        slope = (d0 * (t2 - times[i]) + d1 * (times[i] - t0)) / (t2 - t0)
-        limit = 3 * min(abs(d0), abs(d1))
-        out.append(max(-limit, min(limit, slope)))
-    return out
-
-
-def curve_at(time, times, values, rates, eases, loop, period):
-    n = len(times)
-    if loop:
-        time %= period
-    else:
-        time = max(times[0], min(times[-1], time))
-    # The segment the time falls in, from key i to key j.
-    i = max(k for k in range(n) if times[k] <= time) if time >= times[0] else n - 1
-    j = (i + 1) % n
-    t0 = times[i]
-    t1 = times[j] + (period if j == 0 else 0) if loop else times[j] if j > i else times[i]
-    if t1 <= t0:
-        return values[i]
-    h = t1 - t0
-    u = (time - t0) / h
-    v0, v1 = values[i], values[j]
-    ease = eases[j]
-    if ease == "snap":
-        return v0 + (v1 - v0) * (1.5 * u * u - 0.5 * u * u * u)
-    if ease == "out":
-        return v0 + (v1 - v0) * (1 - (1 - u) ** 2)
-    if ease == "lin":
-        return v0 + (v1 - v0) * u
-    u2, u3 = u * u, u * u * u
-    return (2 * u3 - 3 * u2 + 1) * v0 + (u3 - 2 * u2 + u) * h * rates[i] + (-2 * u3 + 3 * u2) * v1 + (u3 - u2) * h * rates[j]
-
+import moves  # noqa: E402
+from moves import with_  # noqa: E402
 
 # How much the head turns back toward the opponent, in the guard: 1 would keep it straight ahead.
 GUARD_LOOK = 0.7
 
 
-class Clip:
-    def __init__(self, name, end, keys, loop=False, lag=None, life=0.6, look=GUARD_LOOK):
-        self.name, self.end, self.loop, self.life, self.look = name, end, loop, life, look
-        keys = sorted(keys, key=lambda k: k[0])
-        self.times = [k[0] for k in keys]
-        self.eases = [k[2] if len(k) > 2 else "smooth" for k in keys]
-        rows = [flatten(k[1]) for k in keys]
-        self.columns = list(zip(*rows))
-        self.rates = [slopes(self.times, list(column), self.eases, loop, end) for column in self.columns]
-        self.lag = dict(LAG, **(lag or {}))
-        self.parts = [part for _, size, part in SCHEMA for _ in range(size)]
-
-    def pose_at(self, frame):
-        # Every part is together at the first and last frames, so a move starts and ends exactly in its
-        # stance and chains with the others; the parts drift apart over the first frames and come back
-        # together over the last. In a loop the last frame is the first again, so it still wraps.
-        together = min(1.0, frame / 4.0, (self.end - frame) / 4.0)
-        values = []
-        for c, column in enumerate(self.columns):
-            time = frame - self.lag[self.parts[c]] * together
-            values.append(curve_at(time, self.times, column, self.rates[c], self.eases, self.loop, self.end))
-        pose = unflatten(values)
-        self.alive(pose, frame)
-        return pose
-
-    def wave(self, frame, cycles, phase=0.0):
-        """A wave that goes `cycles` times through the clip and is nothing at its first and last frames."""
-        return math.sin(2 * math.pi * cycles * frame / self.end + phase) * math.sin(math.pi * frame / self.end) if not self.loop \
-            else math.sin(2 * math.pi * cycles * frame / self.end + phase) - math.sin(phase)
-
-    def alive(self, pose, frame):
-        life = self.life
-        breaths = max(1, round(self.end / 90))
-        cycles = max(1, round(self.end / 40))
-        yaw, pitch, roll = pose["chest"]
-        pose["chest"] = (yaw, pitch + 1.6 * life * self.wave(frame, breaths), roll)
-        hx, hy, hz = pose["hips"]
-        pose["hips"] = (hx, hy + 0.004 * life * self.wave(frame, breaths, 1.0), hz)
-        yaw, pitch, roll = pose["head"]
-        # The eyes stay on the opponent while the hips and chest turn; in a move that happens once, as
-        # much as in the guard at its first and last frames, so it chains with it.
-        together = 1.0 if self.loop else min(1.0, frame / 4.0, (self.end - frame) / 4.0)
-        look = GUARD_LOOK + (self.look - GUARD_LOOK) * together
-        turned = pose["hipr"][0] + pose["chest"][0]
-        pose["head"] = (yaw - look * turned + 1.5 * life * self.wave(frame, cycles, 0.7),
-                        pitch + 1.0 * life * self.wave(frame, cycles + 1, 2.1), roll + 0.8 * life * self.wave(frame, cycles, 4.0))
-        for side, phase in (("hl", 0.0), ("hr", 2.4)):
-            x, y, z = pose[side]
-            pose[side] = (x + 0.006 * life * self.wave(frame, cycles, phase), y + 0.008 * life * self.wave(frame, cycles + 1, phase + 1.3), z)
-
-
-def make(clip):
-    """Poses every frame of a clip, bakes it into bone rotations and keeps it as an action."""
-    print(f"== {clip.name}")
-    clear_animation()
-    last = clip.end - 1 if clip.loop else clip.end
-    for frame in range(clip.end + 1):
-        apply(clip.pose_at(frame))
-        key(frame)
-    finish_curves("LINEAR", cyclic=False)
-    return bake(clip.name, last)
-
-
-def with_(pose, **changes):
-    out = dict(pose)
-    out.update(changes)
-    return out
+def Clip(name, end, keys, look=GUARD_LOOK, **options):
+    """A fighting move: fists closed, eyes on the opponent, and the guard's look at its ends."""
+    return moves.Clip(name, end, keys, look=look, rest_look=GUARD_LOOK, hands=1.0, **options)
 
 
 # --- the guard -----------------------------------------------------------------------------------
@@ -257,16 +79,20 @@ def direto():
 
 
 def hook_poses():
-    load = with_(G, hips=(0.03, -0.10, 0.0), hipr=(-32, 6, 3), chest=(-16, 8, 5), hl=(0.10, 0.12, 0.26), el=(0.40, -0.30, 0.05))
-    hit = with_(G, hips=(0.0, -0.09, 0.02), hipr=(16, 6, -2), chest=(24, 6, -3), hl=(-0.12, 0.17, 0.36), el=(0.55, 0.05, 0.25),
-                reach=(10, 0), sh=(12, 8), fl=(0.10, 0.17, 0, 12, 25), hr=(-0.10, 0.19, 0.15))
+    """
+    A left hook: the fist pulls back beside the head, then the body turns some 40 degrees and the arm,
+    bent square with the elbow out at shoulder height, sweeps across in front of the chin.
+    """
+    load = with_(G, hips=(0.03, -0.10, 0.0), hipr=(-32, 6, 3), chest=(-16, 8, 5), hl=(0.16, 0.12, 0.22), el=(0.50, -0.20, -0.05))
+    hit = with_(G, hips=(0.0, -0.09, 0.02), hipr=(0, 6, -2), chest=(10, 6, -3), hl=(-0.06, 0.26, 0.26), el=(0.65, 0.32, 0.20),
+                reach=(10, 0), sh=(14, 8), fl=(0.10, 0.17, 0, 12, 25), hr=(-0.10, 0.19, 0.15))
     return load, hit
 
 
 def gancho():
     """Gancho de esquerda: o corpo gira sobre o pé da frente e o braço dobrado vem de lado, na altura do queixo."""
     load, hit = hook_poses()
-    after = with_(hit, chest=(28, 6, -3), hl=(-0.16, 0.17, 0.33))
+    after = with_(hit, chest=(13, 6, -3), hl=(-0.09, 0.26, 0.25))
     back = with_(G, hipr=(-16, 5, 0), hl=(0.05, 0.16, 0.30))
     keys = [(0, G), (6, load), (11, hit, "snap"), (13, after), (21, back, "out"), (32, G)]
     return Clip("Combate_Gancho", 32, keys, life=0.5)
@@ -304,17 +130,17 @@ def sequencia():
     _, cross = cross_poses()
     _, hook = hook_poses()
     swap = with_(G, hips=(-0.01, -0.085, -0.01), hipr=(-26, 5, 0), chest=(-12, 8, 0), hl=(0.06, 0.17, 0.34))
-    turn = with_(cross, hl=(0.12, 0.13, 0.26), el=(0.42, -0.30, 0.05), hr=(-0.06, 0.16, 0.30), hips=(0.02, -0.095, 0.02))
+    turn = with_(cross, hl=(0.16, 0.12, 0.22), el=(0.50, -0.20, -0.05), hr=(-0.06, 0.16, 0.30), hips=(0.02, -0.095, 0.02))
     back = with_(G, hipr=(-14, 5, 0), hl=(0.05, 0.16, 0.30))
     keys = [(0, G), (4, with_(G, hipr=(-25, 5, 0), chest=(-11, 7, 0))), (8, jab_hit, "snap"), (11, swap), (15, cross, "snap"),
-            (19, turn), (23, hook, "snap"), (25, with_(hook, chest=(27, 6, -3))), (33, back, "out"), (48, G)]
+            (19, turn), (23, hook, "snap"), (25, with_(hook, chest=(13, 6, -3))), (33, back, "out"), (48, G)]
     return Clip("Combate_Sequencia", 48, keys, life=0.4)
 
 
 def soco_corpo():
     """Soco no corpo: dobra os joelhos, inclina para a esquerda e o gancho de esquerda vai na altura da barriga."""
     load = with_(G, hips=(0.04, -0.17, 0.0), hipr=(-30, 10, 6), chest=(-14, 14, 8), hl=(0.12, 0.02, 0.24), el=(0.42, -0.40, 0.0), knee=0.05)
-    hit = with_(G, hips=(0.02, -0.16, 0.03), hipr=(14, 10, 2), chest=(20, 12, 2), hl=(-0.08, -0.08, 0.36), el=(0.50, -0.25, 0.25),
+    hit = with_(G, hips=(0.02, -0.16, 0.03), hipr=(4, 10, 2), chest=(10, 12, 2), hl=(-0.10, -0.10, 0.30), el=(0.55, -0.20, 0.20),
                 fl=(0.10, 0.17, 0, 10, 20), reach=(8, 0), knee=0.05, hr=(-0.10, 0.18, 0.15))
     after = with_(hit, chest=(23, 12, 2))
     back = with_(G, hips=(0.0, -0.09, 0.0), hl=(0.06, 0.15, 0.28))
@@ -450,13 +276,13 @@ def agarrar():
 
 def martelo():
     """Golpe de martelo: ergue o punho de trás acima da cabeça e desce de uma vez, o corpo junto."""
-    raise_ = with_(G, hips=(0.0, -0.04, -0.02), hipr=(-18, -2, 0), chest=(-6, -8, 0), hr=(-0.08, 0.48, 0.06), er=(-0.60, 0.10, -0.10),
+    raise_ = with_(G, hips=(0.0, -0.04, -0.02), hipr=(-18, -2, 0), chest=(-6, -8, 0), hr=(-0.10, 0.58, 0.02), er=(-0.60, 0.10, -0.10),
                    sh=(6, 18))
     smash = with_(G, hips=(0.0, -0.14, 0.04), hipr=(-6, 10, 0), chest=(6, 24, 0), hr=(-0.03, -0.02, 0.40), er=(-0.50, 0.0, 0.10),
                   fr=(-0.14, -0.15, 0, 20, -35))
     after = with_(smash, hr=(-0.03, -0.05, 0.39), chest=(6, 26, 0))
-    keys = [(0, G), (9, raise_), (14, smash, "snap"), (16, after), (24, with_(G, hips=(0.0, -0.09, 0.0)), "out"), (34, G)]
-    return Clip("Combate_Martelo", 34, keys, life=0.4)
+    keys = [(0, G), (9, raise_), (15, smash, "snap"), (17, after), (25, with_(G, hips=(0.0, -0.09, 0.0)), "out"), (35, G)]
+    return Clip("Combate_Martelo", 35, keys, life=0.4)
 
 
 def dano_rosto():
@@ -493,12 +319,12 @@ def atordoado():
 
 
 def provocar():
-    """Chamar para a briga: abre a guarda, estende a mão da frente e chama duas vezes com os dedos, queixo para cima."""
-    open_ = with_(G, hipr=(-20, 0, 0), chest=(-6, -4, 0), head=(0, -6, 0), hl=(0.10, 0.10, 0.42), el=(0.30, -0.45, 0.10),
-                  fing=(0.1, 1), hr=(-0.14, 0.05, 0.12))
-    curl = with_(open_, fing=(0.95, 1), hl=(0.10, 0.11, 0.40))
-    keys = [(0, G), (8, open_), (16, curl), (22, open_), (30, curl), (36, with_(open_, fing=(0.2, 1))), (50, G)]
-    return Clip("Combate_Provocar", 50, keys, life=0.6, look=0.9)
+    """Chamar para a briga: abre a guarda, estende a mão da frente e a puxa duas vezes para o peito, fechando os dedos, queixo para cima."""
+    open_ = with_(G, hipr=(-20, 0, 0), chest=(-6, -4, 0), head=(0, -6, 0), hl=(0.10, 0.08, 0.44), el=(0.30, -0.45, 0.10),
+                  fing=(0.05, 1), hr=(-0.14, 0.05, 0.12))
+    call = with_(open_, fing=(0.9, 1), hl=(0.10, 0.16, 0.28), head=(0, -12, 0), chest=(-6, -7, 0))
+    keys = [(0, G), (8, open_), (14, call), (20, open_), (26, call), (32, open_), (46, G)]
+    return Clip("Combate_Provocar", 46, keys, life=0.6, look=0.9)
 
 
 def vitoria():
@@ -573,26 +399,4 @@ MOVES = [guarda, jab, direto, gancho, uppercut, um_dois, sequencia, soco_corpo, 
          empurrao, agarrar, martelo, dano_rosto, dano_barriga, atordoado, provocar, vitoria, ginga, meia_lua]
 
 
-def show_frames(clip, count=8):
-    """Frames to look at: spread over the clip, and every key."""
-    frames = sorted(set([round(i * clip.end / count) for i in range(count)] + [t for t in clip.times if t < clip.end]))
-    return frames[:12]
-
-
-poser.hands = 1.0
-poser.load(SOURCE)
-poser.add_constraints()
-poser.calibrate_all()
-made = []
-for build in MOVES:
-    clip = build()
-    if ONLY and clip.name not in ONLY:
-        continue
-    action = make(clip)
-    made.append(action)
-    if PREVIEW:
-        os.makedirs(PREVIEW, exist_ok=True)
-        frames = show_frames(clip)
-        print("   prévia nos quadros", frames)
-        poser.preview(action, frames, os.path.join(PREVIEW, clip.name + ".png"))
-poser.export(OUT, made)
+moves.run(MOVES, hands=1.0)

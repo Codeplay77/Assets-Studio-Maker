@@ -62,6 +62,9 @@ for (const name of SOURCE_BONES) {
 }
 
 /** The source skeleton's feet, the bones that touch the ground when standing. */
+/** The bone a Realista person holds things with, by the socket they are put on. */
+const HELD_IN: Record<string, SourceBone> = { grip_left: "hand_l", grip_right: "hand_r" };
+
 const FEET: SourceBone[] = ["foot_l", "ball_l", "foot_r", "ball_r"];
 
 /**
@@ -361,14 +364,17 @@ function findSkinnedRigs(parts: Part[], grid: MountGrid, used: Set<Part>): Rig[]
       add(part, 0, true);
     }
     const followers: { part: Part; bone: number }[] = [];
+    const ids = getBlock(body.block).sockets.map((socket) => socket.id);
     // The first socket is where the body stands: what is there is the ground, not the person.
     socketsOf(body)
       .slice(1)
-      .forEach((socket) => {
+      .forEach((socket, index) => {
+        // What is held goes with the hand, not with a finger whose joint happens to be nearer.
+        const held = bones.findIndex((bone) => bone.name === HELD_IN[ids[index + 1]]);
         for (const { part } of grid.near(socket)) {
           if (used.has(part) || part.group !== body.group || getBlock(part.block).skeleton) continue;
           used.add(part);
-          followers.push({ part, bone: nearestBone(socket.clone().applyMatrix4(toLocal)) });
+          followers.push({ part, bone: held >= 0 ? held : nearestBone(socket.clone().applyMatrix4(toLocal)) });
         }
       });
     for (let i = 0; i < followers.length; i++) {

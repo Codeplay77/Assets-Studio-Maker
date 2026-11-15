@@ -35,12 +35,33 @@ medidas reais e a frente de cada peça ficou virada para +Z.
 
 O Furniture Kit traz o mesmo `License.txt` dos outros pacotes da Kenney.
 
+## Armas (CC0 1.0)
+
+As armas de Low poly, Arcade e Blocos ficam em `public/models/armas.bin`, gerado pelo
+`scripts/import-weapons.ts` a partir dos pacotes que o `scripts/download-weapons.ts` baixa das
+publicações dos próprios autores no OpenGameArt. As cores viraram cores por vértice, as escalas
+foram levadas a medidas reais, cada arma ficou em pé com o cano ou a ponta para o mesmo lado e
+ganhou o ponto onde a mão a segura. As do Low poly também foram convertidas em cubos para o Blocos,
+e as armas brancas do RPG Items Pack ficaram mais grossas e brilhantes no Arcade, como brinquedos.
+
+| Pacote | Autor | Origem | Estilo no editor |
+| --- | --- | --- | --- |
+| Blaster Kit 2.1 (34 peças: blasters, granadas, miras, alvos e caixas) | [Kenney](https://kenney.nl) | [OpenGameArt](https://opengameart.org/content/blaster-kit) | Arcade |
+| Ultimate Gun Pack, julho de 2019 (40 armas e 15 acessórios) | [Quaternius](https://quaternius.com) | [OpenGameArt](https://opengameart.org/content/low-poly-guns-pack) | Low poly e, em cubos, Blocos |
+| Low Poly Medieval Weapons (6 armas; a adaga, sem cores no OBJ, ficou de fora) | [Quaternius](https://quaternius.com) | [OpenGameArt](https://opengameart.org/content/low-poly-medieval-weapons) | Low poly e, em cubos, Blocos |
+| Ultimate RPG Items Pack, agosto de 2019 (as 18 armas) | [Quaternius](https://quaternius.com) | [OpenGameArt](https://opengameart.org/content/low-poly-rpg-pack) | Low poly, em cubos Blocos, e como brinquedo Arcade |
+
+O Blaster Kit traz o mesmo `License.txt` CC0 dos outros pacotes da Kenney; o RPG Items Pack traz
+um `License.txt` CC0; os outros dois são CC0 na página de cada um no OpenGameArt. Os cajados e a
+varinha, que nenhum pacote tem, foram desenhados para o editor em
+`src/blocks/definitions/weapons.ts`. As armas do Realista vêm do Poly Haven (abaixo).
+
 ## Realista: modelos, texturas e céu (CC0 1.0)
 
 Tudo o que o estilo Realista traz de fora vem do [Poly Haven](https://polyhaven.com), cujo acervo
 inteiro é CC0, e é baixado pelo `scripts/download-realistic.ts`.
 
-- **145 modelos** (móveis, plantas, árvores, pedras e objetos de rua) ficam em
+- **164 modelos** (móveis, plantas, árvores, pedras, objetos de rua e armas) ficam em
   `public/models/realista.bin`, com as texturas originais em `public/textures/ph.*`. O
   `tools/blender/prepare_polyhaven.py` reduz cada um a um tamanho de jogo sem perder as texturas,
   separa as versões que vêm lado a lado num arquivo e faz uma cópia leve das plantas e pedras, e o
@@ -56,14 +77,21 @@ Modelos:
 | Modelo | Autor | Página |
 | --- | --- | --- |
 | Alarm Clock 01 | Yann Kervran, James Ray Cock | [alarm_clock_01](https://polyhaven.com/a/alarm_clock_01) |
+| Ammo Box | DanKit | [ammo_box](https://polyhaven.com/a/ammo_box) |
 | Anthurium Botany 01 | Rob Tuytel, Rico Cilliers | [anthurium_botany_01](https://polyhaven.com/a/anthurium_botany_01) |
+| Antique Estoc | James Ray Cock, Ulan Cabanilla | [antique_estoc](https://polyhaven.com/a/antique_estoc) |
+| Antique Katana 01 | Tal Swicegood | [antique_katana_01](https://polyhaven.com/a/antique_katana_01) |
 | Arm Chair 01 | Kirill Sannikov | [ArmChair_01](https://polyhaven.com/a/ArmChair_01) |
 | Bar Chair Round 01 | Dairon Sanchez | [bar_chair_round_01](https://polyhaven.com/a/bar_chair_round_01) |
+| Bolt Action Rifle 7.62 | Mateusz Sadek | [bolt_action_rifle_7_62](https://polyhaven.com/a/bolt_action_rifle_7_62) |
 | Boombox | Thomas Paul Mouilleron | [boombox](https://polyhaven.com/a/boombox) |
+| Boulder 01 | Rico Cilliers | [boulder_01](https://polyhaven.com/a/boulder_01) |
 | Calathea Orbifolia 01 | Rob Tuytel, Rico Cilliers | [calathea_orbifolia_01](https://polyhaven.com/a/calathea_orbifolia_01) |
+| Cannon 01 | Yann Kervran, James Ray Cock | [cannon_01](https://polyhaven.com/a/cannon_01) |
 | Cardboard Box 01 | Rahul Chaudhary | [cardboard_box_01](https://polyhaven.com/a/cardboard_box_01) |
 | Cash Register 01 | Joe Seabuhr | [CashRegister_01](https://polyhaven.com/a/CashRegister_01) |
 | Ceiling Fan | Ulan Cabanilla | [ceiling_fan](https://polyhaven.com/a/ceiling_fan) |
+| Celandine 01 | Rob Tuytel, Rico Cilliers | [celandine_01](https://polyhaven.com/a/celandine_01) |
 | Ceramic Vase 01 | James Ray Cock | [ceramic_vase_01](https://polyhaven.com/a/ceramic_vase_01) |
 | Ceramic Vase 02 | James Ray Cock | [ceramic_vase_02](https://polyhaven.com/a/ceramic_vase_02) |
 | Ceramic Vase 03 | James Ray Cock | [ceramic_vase_03](https://polyhaven.com/a/ceramic_vase_03) |
@@ -74,23 +102,44 @@ Modelos:
 | Classic Nightstand 01 | Kirill Sannikov | [ClassicNightstand_01](https://polyhaven.com/a/ClassicNightstand_01) |
 | Coffee Table Round 01 | Ulan Cabanilla | [coffee_table_round_01](https://polyhaven.com/a/coffee_table_round_01) |
 | Coffee Table 01 | Fernando Quinn | [CoffeeTable_01](https://polyhaven.com/a/CoffeeTable_01) |
+| Concrete Road Barrier | Amal Kumar | [concrete_road_barrier](https://polyhaven.com/a/concrete_road_barrier) |
+| Dandelion 01 | Rob Tuytel, Rico Cilliers | [dandelion_01](https://polyhaven.com/a/dandelion_01) |
+| Dead Tree Trunk 02 | Jenelle van Heerden, Rico Cilliers | [dead_tree_trunk_02](https://polyhaven.com/a/dead_tree_trunk_02) |
 | Desk Lamp Arm 01 | Yann Kervran, Kuutti Siitonen | [desk_lamp_arm_01](https://polyhaven.com/a/desk_lamp_arm_01) |
 | Dining Chair 02 | James Ray Cock | [dining_chair_02](https://polyhaven.com/a/dining_chair_02) |
 | Dining Table | Aron Łyczek | [dining_table](https://polyhaven.com/a/dining_table) |
 | Drawer Cabinet | Ulan Cabanilla | [drawer_cabinet](https://polyhaven.com/a/drawer_cabinet) |
 | Electric Stove | Kuutti Siitonen | [electric_stove](https://polyhaven.com/a/electric_stove) |
+| Exterior Aircon Unit | Monsta3D | [exterior_aircon_unit](https://polyhaven.com/a/exterior_aircon_unit) |
 | Fancy Picture Frame 01 | Rob Tuytel, Rico Cilliers | [fancy_picture_frame_01](https://polyhaven.com/a/fancy_picture_frame_01) |
+| Fern 02 | Rob Tuytel, Rico Cilliers | [fern_02](https://polyhaven.com/a/fern_02) |
+| Fir Sapling | Rob Tuytel, Rico Cilliers | [fir_sapling](https://polyhaven.com/a/fir_sapling) |
+| Fir Tree 01 | Rob Tuytel, Rico Cilliers | [fir_tree_01](https://polyhaven.com/a/fir_tree_01) |
 | Fire Alarm | Slinc | [fire_alarm](https://polyhaven.com/a/fire_alarm) |
+| Fire Hydrant | Gonçalo Felício | [fire_hydrant](https://polyhaven.com/a/fire_hydrant) |
+| Fish Knife | Mateusz Sadek | [fish_knife](https://polyhaven.com/a/fish_knife) |
+| Flower Gazania | James Ray Cock, Jenelle van Heerden | [flower_gazania](https://polyhaven.com/a/flower_gazania) |
 | Folding Wooden Stool | Ulan Cabanilla | [folding_wooden_stool](https://polyhaven.com/a/folding_wooden_stool) |
 | Gaming Console | Sean Buckley | [gaming_console](https://polyhaven.com/a/gaming_console) |
 | Gothic Bed 01 | Kirill Sannikov | [GothicBed_01](https://polyhaven.com/a/GothicBed_01) |
 | Gothic Cabinet 01 | Kirill Sannikov | [GothicCabinet_01](https://polyhaven.com/a/GothicCabinet_01) |
 | Gothic Commode 01 | Kirill Sannikov | [GothicCommode_01](https://polyhaven.com/a/GothicCommode_01) |
+| Grass Bermuda 01 | Rico Cilliers | [grass_bermuda_01](https://polyhaven.com/a/grass_bermuda_01) |
+| Grass Medium 01 | Rob Tuytel, Rico Cilliers | [grass_medium_01](https://polyhaven.com/a/grass_medium_01) |
+| Grass Medium 02 | Rico Cilliers | [grass_medium_02](https://polyhaven.com/a/grass_medium_02) |
 | Green Chair 01 | Kirill Sannikov | [GreenChair_01](https://polyhaven.com/a/GreenChair_01) |
 | Hanging Industrial Lamp | Kuutti Siitonen | [hanging_industrial_lamp](https://polyhaven.com/a/hanging_industrial_lamp) |
 | Hanging Picture Frame 01 | James Ray Cock | [hanging_picture_frame_01](https://polyhaven.com/a/hanging_picture_frame_01) |
+| Hatchet | James Ray Cock, Ulan Cabanilla | [hatchet](https://polyhaven.com/a/hatchet) |
 | Industrial Coffee Table | Ulan Cabanilla | [industrial_coffee_table](https://polyhaven.com/a/industrial_coffee_table) |
 | Industrial Wall Lamp | Kuutti Siitonen | [industrial_wall_lamp](https://polyhaven.com/a/industrial_wall_lamp) |
+| Island Tree 01 | Rob Tuytel, Rico Cilliers | [island_tree_01](https://polyhaven.com/a/island_tree_01) |
+| Island Tree 02 | Rob Tuytel, Rico Cilliers | [island_tree_02](https://polyhaven.com/a/island_tree_02) |
+| Island Tree 03 | Rob Tuytel, Rico Cilliers | [island_tree_03](https://polyhaven.com/a/island_tree_03) |
+| Jacaranda Tree | Rob Tuytel, Rico Cilliers | [jacaranda_tree](https://polyhaven.com/a/jacaranda_tree) |
+| Katana Stand 01 | Rico Cilliers | [katana_stand_01](https://polyhaven.com/a/katana_stand_01) |
+| Kite Shield | Ulan Cabanilla | [kite_shield](https://polyhaven.com/a/kite_shield) |
+| Machete | Ulan Cabanilla | [machete](https://polyhaven.com/a/machete) |
 | Mantel Clock 01 | Yann Kervran, Rico Cilliers | [mantel_clock_01](https://polyhaven.com/a/mantel_clock_01) |
 | Metal Office Desk | Ulan Cabanilla | [metal_office_desk](https://polyhaven.com/a/metal_office_desk) |
 | Metal Stool 01 | Ulan Cabanilla | [metal_stool_01](https://polyhaven.com/a/metal_stool_01) |
@@ -101,10 +150,18 @@ Modelos:
 | Modern Coffee Table 01 | Amin | [modern_coffee_table_01](https://polyhaven.com/a/modern_coffee_table_01) |
 | Modern Coffee Table 02 | Amin | [modern_coffee_table_02](https://polyhaven.com/a/modern_coffee_table_02) |
 | Modern Wooden Cabinet | Patrik Pangerl | [modern_wooden_cabinet](https://polyhaven.com/a/modern_wooden_cabinet) |
+| Namaqualand Boulder 02 | Greg Zaal, Rico Cilliers | [namaqualand_boulder_02](https://polyhaven.com/a/namaqualand_boulder_02) |
+| Nettle Plant | Rob Tuytel, Rico Cilliers | [nettle_plant](https://polyhaven.com/a/nettle_plant) |
 | Old Bed Frame | Luca B | [old_bed_frame](https://polyhaven.com/a/old_bed_frame) |
+| Old Military Crate | Jack Mava | [old_military_crate](https://polyhaven.com/a/old_military_crate) |
+| Ornate Medieval Dagger | Sofia Pahaoja | [ornate_medieval_dagger](https://polyhaven.com/a/ornate_medieval_dagger) |
+| Ornate Medieval Mace | Ulan Cabanilla | [ornate_medieval_mace](https://polyhaven.com/a/ornate_medieval_mace) |
 | Ornate Mirror 01 | James Ray Cock | [ornate_mirror_01](https://polyhaven.com/a/ornate_mirror_01) |
+| Ornate War Hammer | James Ray Cock, Ulan Cabanilla | [ornate_war_hammer](https://polyhaven.com/a/ornate_war_hammer) |
 | Ottoman 01 | Caspian Fortune | [Ottoman_01](https://polyhaven.com/a/Ottoman_01) |
+| Outdoor Table Chair Set 01 | James Ray Cock | [outdoor_table_chair_set_01](https://polyhaven.com/a/outdoor_table_chair_set_01) |
 | Pachira Aquatica 01 | Rob Tuytel, Rico Cilliers | [pachira_aquatica_01](https://polyhaven.com/a/pachira_aquatica_01) |
+| Painted Wooden Bench | Kirill Sannikov | [painted_wooden_bench](https://polyhaven.com/a/painted_wooden_bench) |
 | Painted Wooden Cabinet | Kirill Sannikov | [painted_wooden_cabinet](https://polyhaven.com/a/painted_wooden_cabinet) |
 | Painted Wooden Cabinet 02 | Kirill Sannikov | [painted_wooden_cabinet_02](https://polyhaven.com/a/painted_wooden_cabinet_02) |
 | Painted Wooden Chair 02 | Kirill Sannikov | [painted_wooden_chair_02](https://polyhaven.com/a/painted_wooden_chair_02) |
@@ -112,6 +169,9 @@ Modelos:
 | Painted Wooden Shelves | Kirill Sannikov | [painted_wooden_shelves](https://polyhaven.com/a/painted_wooden_shelves) |
 | Painted Wooden Sofa | Kirill Sannikov | [painted_wooden_sofa](https://polyhaven.com/a/painted_wooden_sofa) |
 | Painted Wooden Table | Kirill Sannikov | [painted_wooden_table](https://polyhaven.com/a/painted_wooden_table) |
+| Periwinkle Plant | Amal Kumar | [periwinkle_plant](https://polyhaven.com/a/periwinkle_plant) |
+| Pine Sapling Medium | Rob Tuytel, Rico Cilliers | [pine_sapling_medium](https://polyhaven.com/a/pine_sapling_medium) |
+| Planter Box 01 | James Ray Cock | [planter_box_01](https://polyhaven.com/a/planter_box_01) |
 | Planter Pot Clay | Amal Kumar | [planter_pot_clay](https://polyhaven.com/a/planter_pot_clay) |
 | Plastic Crate 01 | PierreB3D | [plastic_crate_01](https://polyhaven.com/a/plastic_crate_01) |
 | Plastic Monobloc Chair 01 | Kuutti Siitonen | [plastic_monobloc_chair_01](https://polyhaven.com/a/plastic_monobloc_chair_01) |
@@ -119,13 +179,23 @@ Modelos:
 | Potted Plant 02 | Rico Cilliers | [potted_plant_02](https://polyhaven.com/a/potted_plant_02) |
 | Potted Plant 04 | James Ray Cock | [potted_plant_04](https://polyhaven.com/a/potted_plant_04) |
 | Projector Screen | PeterM | [projector_screen](https://polyhaven.com/a/projector_screen) |
+| Quiver Tree 01 | James Ray Cock, Dario Barresi, Rico Cilliers | [quiver_tree_01](https://polyhaven.com/a/quiver_tree_01) |
+| Rock 07 | Jenelle van Heerden | [rock_07](https://polyhaven.com/a/rock_07) |
+| Rock 09 | Jenelle van Heerden | [rock_09](https://polyhaven.com/a/rock_09) |
+| Rock Moss Set 01 | Kless Gyzen | [rock_moss_set_01](https://polyhaven.com/a/rock_moss_set_01) |
 | Rockingchair 01 | Jorge Camacho | [Rockingchair_01](https://polyhaven.com/a/Rockingchair_01) |
 | Round Wooden Table 01 | Ulan Cabanilla | [round_wooden_table_01](https://polyhaven.com/a/round_wooden_table_01) |
 | Round Wooden Table 02 | Ulan Cabanilla | [round_wooden_table_02](https://polyhaven.com/a/round_wooden_table_02) |
 | Rubber Duck Toy | Plat251 | [rubber_duck_toy](https://polyhaven.com/a/rubber_duck_toy) |
 | School Chair 01 | Ethan Place | [SchoolChair_01](https://polyhaven.com/a/SchoolChair_01) |
 | School Desk 01 | Ethan Place | [SchoolDesk_01](https://polyhaven.com/a/SchoolDesk_01) |
+| Security Camera 01 | Alexander Otterbeck, Yann Kervran | [security_camera_01](https://polyhaven.com/a/security_camera_01) |
+| Service Pistol | Mateusz Sadek | [service_pistol](https://polyhaven.com/a/service_pistol) |
 | Shelf 01 | Gabriel Radić | [Shelf_01](https://polyhaven.com/a/Shelf_01) |
+| Shrub 01 | Rico Cilliers | [shrub_01](https://polyhaven.com/a/shrub_01) |
+| Shrub 02 | Rico Cilliers | [shrub_02](https://polyhaven.com/a/shrub_02) |
+| Shrub 03 | Rico Cilliers | [shrub_03](https://polyhaven.com/a/shrub_03) |
+| Shrub 04 | Rico Cilliers | [shrub_04](https://polyhaven.com/a/shrub_04) |
 | Side Table 01 | James Ray Cock | [side_table_01](https://polyhaven.com/a/side_table_01) |
 | Side Table Tall 01 | James Ray Cock | [side_table_tall_01](https://polyhaven.com/a/side_table_tall_01) |
 | Small Wooden Table 01 | Ulan Cabanilla | [small_wooden_table_01](https://polyhaven.com/a/small_wooden_table_01) |
@@ -135,9 +205,17 @@ Modelos:
 | Standing Chalkboard 01 | ParzivalCG | [standing_chalkboard_01](https://polyhaven.com/a/standing_chalkboard_01) |
 | Standing Picture Frame 01 | James Ray Cock | [standing_picture_frame_01](https://polyhaven.com/a/standing_picture_frame_01) |
 | Steel Frame Shelves 01 | James Ray Cock | [steel_frame_shelves_01](https://polyhaven.com/a/steel_frame_shelves_01) |
+| Stick Grenade | singaii | [stick_grenade](https://polyhaven.com/a/stick_grenade) |
+| Stone 01 | Dario Barresi, Rico Cilliers | [stone_01](https://polyhaven.com/a/stone_01) |
+| Street Lamp 01 | Josh Dean | [street_lamp_01](https://polyhaven.com/a/street_lamp_01) |
+| Street Lamp 02 | Josh Dean | [street_lamp_02](https://polyhaven.com/a/street_lamp_02) |
 | Television 01 | Gabriel Radić | [Television_01](https://polyhaven.com/a/Television_01) |
 | Television 02 | Benny Weimer | [television_02](https://polyhaven.com/a/television_02) |
 | Throw Pillows 01 | Serhii Khromov | [throw_pillows_01](https://polyhaven.com/a/throw_pillows_01) |
+| Trashbag | Benny Weimer | [trashbag](https://polyhaven.com/a/trashbag) |
+| Tree Small 02 | Rico Cilliers | [tree_small_02](https://polyhaven.com/a/tree_small_02) |
+| Tree Stump 01 | Rob Tuytel | [tree_stump_01](https://polyhaven.com/a/tree_stump_01) |
+| Utility Box 01 | James Ray Cock | [utility_box_01](https://polyhaven.com/a/utility_box_01) |
 | Vintage Cabinet 01 | Rico Cilliers | [vintage_cabinet_01](https://polyhaven.com/a/vintage_cabinet_01) |
 | Vintage Day Bed | Aron Łyczek | [vintage_day_bed](https://polyhaven.com/a/vintage_day_bed) |
 | Vintage Electric Kettle | SV Garip | [vintage_electric_kettle](https://polyhaven.com/a/vintage_electric_kettle) |
@@ -146,60 +224,22 @@ Modelos:
 | Vintage Suitcase | Maximilian Schuster | [vintage_suitcase](https://polyhaven.com/a/vintage_suitcase) |
 | Vintage Wooden Drawer 01 | James Ray Cock | [vintage_wooden_drawer_01](https://polyhaven.com/a/vintage_wooden_drawer_01) |
 | Wall Clock | PierreB3D | [wall_clock](https://polyhaven.com/a/wall_clock) |
+| Water Manhole Cover | Raunox | [water_manhole_cover](https://polyhaven.com/a/water_manhole_cover) |
 | Wet Floor Sign 01 | Fran Calvente | [WetFloorSign_01](https://polyhaven.com/a/WetFloorSign_01) |
 | Wicker Basket 02 | Kuutti Siitonen | [wicker_basket_02](https://polyhaven.com/a/wicker_basket_02) |
+| Wild Rooibos Bush | James Ray Cock, Jenelle van Heerden | [wild_rooibos_bush](https://polyhaven.com/a/wild_rooibos_bush) |
+| Wooden Axe | Ulan Cabanilla | [wooden_axe](https://polyhaven.com/a/wooden_axe) |
+| Wooden Axe 02 | Ulan Cabanilla | [wooden_axe_02](https://polyhaven.com/a/wooden_axe_02) |
 | Wooden Bookshelf Worn | Ulan Cabanilla | [wooden_bookshelf_worn](https://polyhaven.com/a/wooden_bookshelf_worn) |
 | Wooden Crate 01 | James Ray Cock | [wooden_crate_01](https://polyhaven.com/a/wooden_crate_01) |
 | Wooden Display Shelves 01 | James Ray Cock | [wooden_display_shelves_01](https://polyhaven.com/a/wooden_display_shelves_01) |
+| Wooden Handle Saber | Ulan Cabanilla | [wooden_handle_saber](https://polyhaven.com/a/wooden_handle_saber) |
+| Wooden Picnic Table | Ulan Cabanilla | [wooden_picnic_table](https://polyhaven.com/a/wooden_picnic_table) |
 | Wooden Stool 01 | Kuutti Siitonen | [wooden_stool_01](https://polyhaven.com/a/wooden_stool_01) |
 | Wooden Stool 02 | Kuutti Siitonen | [wooden_stool_02](https://polyhaven.com/a/wooden_stool_02) |
 | Wooden Chair 01 | Jake Mobley | [WoodenChair_01](https://polyhaven.com/a/WoodenChair_01) |
 | Wooden Table 01 | Ethan Place | [WoodenTable_01](https://polyhaven.com/a/WoodenTable_01) |
 | Wooden Table 02 | Fran Calvente | [WoodenTable_02](https://polyhaven.com/a/WoodenTable_02) |
-| Boulder 01 | Rico Cilliers | [boulder_01](https://polyhaven.com/a/boulder_01) |
-| Celandine 01 | Rob Tuytel, Rico Cilliers | [celandine_01](https://polyhaven.com/a/celandine_01) |
-| Dandelion 01 | Rob Tuytel, Rico Cilliers | [dandelion_01](https://polyhaven.com/a/dandelion_01) |
-| Dead Tree Trunk 02 | Jenelle van Heerden, Rico Cilliers | [dead_tree_trunk_02](https://polyhaven.com/a/dead_tree_trunk_02) |
-| Fern 02 | Rob Tuytel, Rico Cilliers | [fern_02](https://polyhaven.com/a/fern_02) |
-| Fir Sapling | Rob Tuytel, Rico Cilliers | [fir_sapling](https://polyhaven.com/a/fir_sapling) |
-| Fir Tree 01 | Rob Tuytel, Rico Cilliers | [fir_tree_01](https://polyhaven.com/a/fir_tree_01) |
-| Flower Gazania | James Ray Cock, Jenelle van Heerden | [flower_gazania](https://polyhaven.com/a/flower_gazania) |
-| Grass Bermuda 01 | Rico Cilliers | [grass_bermuda_01](https://polyhaven.com/a/grass_bermuda_01) |
-| Grass Medium 01 | Rob Tuytel, Rico Cilliers | [grass_medium_01](https://polyhaven.com/a/grass_medium_01) |
-| Grass Medium 02 | Rico Cilliers | [grass_medium_02](https://polyhaven.com/a/grass_medium_02) |
-| Island Tree 01 | Rob Tuytel, Rico Cilliers | [island_tree_01](https://polyhaven.com/a/island_tree_01) |
-| Island Tree 02 | Rob Tuytel, Rico Cilliers | [island_tree_02](https://polyhaven.com/a/island_tree_02) |
-| Island Tree 03 | Rob Tuytel, Rico Cilliers | [island_tree_03](https://polyhaven.com/a/island_tree_03) |
-| Jacaranda Tree | Rob Tuytel, Rico Cilliers | [jacaranda_tree](https://polyhaven.com/a/jacaranda_tree) |
-| Namaqualand Boulder 02 | Greg Zaal, Rico Cilliers | [namaqualand_boulder_02](https://polyhaven.com/a/namaqualand_boulder_02) |
-| Nettle Plant | Rob Tuytel, Rico Cilliers | [nettle_plant](https://polyhaven.com/a/nettle_plant) |
-| Periwinkle Plant | Amal Kumar | [periwinkle_plant](https://polyhaven.com/a/periwinkle_plant) |
-| Pine Sapling Medium | Rob Tuytel, Rico Cilliers | [pine_sapling_medium](https://polyhaven.com/a/pine_sapling_medium) |
-| Quiver Tree 01 | James Ray Cock, Dario Barresi, Rico Cilliers | [quiver_tree_01](https://polyhaven.com/a/quiver_tree_01) |
-| Rock 07 | Jenelle van Heerden | [rock_07](https://polyhaven.com/a/rock_07) |
-| Rock 09 | Jenelle van Heerden | [rock_09](https://polyhaven.com/a/rock_09) |
-| Rock Moss Set 01 | Kless Gyzen | [rock_moss_set_01](https://polyhaven.com/a/rock_moss_set_01) |
-| Shrub 01 | Rico Cilliers | [shrub_01](https://polyhaven.com/a/shrub_01) |
-| Shrub 02 | Rico Cilliers | [shrub_02](https://polyhaven.com/a/shrub_02) |
-| Shrub 03 | Rico Cilliers | [shrub_03](https://polyhaven.com/a/shrub_03) |
-| Shrub 04 | Rico Cilliers | [shrub_04](https://polyhaven.com/a/shrub_04) |
-| Stone 01 | Dario Barresi, Rico Cilliers | [stone_01](https://polyhaven.com/a/stone_01) |
-| Tree Small 02 | Rico Cilliers | [tree_small_02](https://polyhaven.com/a/tree_small_02) |
-| Tree Stump 01 | Rob Tuytel | [tree_stump_01](https://polyhaven.com/a/tree_stump_01) |
-| Wild Rooibos Bush | James Ray Cock, Jenelle van Heerden | [wild_rooibos_bush](https://polyhaven.com/a/wild_rooibos_bush) |
-| Concrete Road Barrier | Amal Kumar | [concrete_road_barrier](https://polyhaven.com/a/concrete_road_barrier) |
-| Exterior Aircon Unit | Monsta3D | [exterior_aircon_unit](https://polyhaven.com/a/exterior_aircon_unit) |
-| Fire Hydrant | Gonçalo Felício | [fire_hydrant](https://polyhaven.com/a/fire_hydrant) |
-| Outdoor Table Chair Set 01 | James Ray Cock | [outdoor_table_chair_set_01](https://polyhaven.com/a/outdoor_table_chair_set_01) |
-| Painted Wooden Bench | Kirill Sannikov | [painted_wooden_bench](https://polyhaven.com/a/painted_wooden_bench) |
-| Planter Box 01 | James Ray Cock | [planter_box_01](https://polyhaven.com/a/planter_box_01) |
-| Security Camera 01 | Alexander Otterbeck, Yann Kervran | [security_camera_01](https://polyhaven.com/a/security_camera_01) |
-| Street Lamp 01 | Josh Dean | [street_lamp_01](https://polyhaven.com/a/street_lamp_01) |
-| Street Lamp 02 | Josh Dean | [street_lamp_02](https://polyhaven.com/a/street_lamp_02) |
-| Trashbag | Benny Weimer | [trashbag](https://polyhaven.com/a/trashbag) |
-| Utility Box 01 | James Ray Cock | [utility_box_01](https://polyhaven.com/a/utility_box_01) |
-| Water Manhole Cover | Raunox | [water_manhole_cover](https://polyhaven.com/a/water_manhole_cover) |
-| Wooden Picnic Table | Ulan Cabanilla | [wooden_picnic_table](https://polyhaven.com/a/wooden_picnic_table) |
 
 Texturas:
 
@@ -262,6 +302,12 @@ reduzidas, as das roupas e dos cabelos que mudam de cor ficaram em tons de cinza
 tom neutro para receber a cor escolhida, e o logotipo do MakeHuman foi apagado das camisetas. O
 `scripts/import-people.ts` gera o pacote.
 
+O boné é o "toigo_maga_hat", de MargaretToigo, do pacote [hats01](https://static.makehumancommunity.org/assets/assetpacks/hats01.html)
+da comunidade do MakeHuman, CC0 1.0. O texto bordado na frente foi apagado da textura, que ficou em
+tons de cinza para receber a cor escolhida, e o boné é erguido sobre o cabelo de cada pessoa; o
+chapéu (o "fedora01" do MakeHuman) sobe e, se preciso, fica um número maior, sem perder a forma. A
+mochila não vem do MakeHuman: o script a monta para cada corpo, com o tecido de algodão do editor.
+
 ## Animações (CC0 1.0)
 
 As 162 animações humanas vêm do [Mesh2Motion](https://github.com/Mesh2Motion/mesh2motion-app), cujo
@@ -284,6 +330,13 @@ gancho, uppercut, sequências, soco no corpo, cotovelada, joelhada, chutes front
 e baixo, esquivas, bloqueio, empurrão, agarrar, golpe de martelo, golpes recebidos, atordoado,
 provocação, comemoração, ginga e meia-lua de frente) foram feitos para o editor pelo
 `tools/blender/make_combat.py`, sobre o mesmo esqueleto, e também fazem parte do projeto.
+
+As 37 atividades do dia a dia (dirigir carro e kart, pilotar moto, pedalar, montar a cavalo parado,
+a trote e a galope, remar canoa, andar de skate, varrer, martelar, serrar, cavar, pescar, cozinhar,
+digitar, mexer no celular, levantar caixa, futebol, basquete, pular corda, agachamento,
+alongamento, aplaudir, apontar, dar de ombros, coçar a cabeça, olhar o relógio, rir, chorar, tirar
+selfie, tocar violão e tocar bateria) foram feitas para o editor pelo
+`tools/blender/make_activities.py`, sobre o mesmo esqueleto, e também fazem parte do projeto.
 
 ## Bibliotecas incluídas no aplicativo
 

@@ -137,8 +137,27 @@ export const PERSON_OPTIONS: GeneratorOption[] = [
     applies: ({ style, options }) => style !== "realistic" && options.sex !== "female" && options.age !== "child" && options.age !== "teen",
   },
   { id: "glasses", label: "Óculos", choices: yesNo, applies: ({ style }) => style !== "realistic" },
-  { id: "hat", label: "Chapéu", choices: yesNo },
-  { id: "backpack", label: "Mochila", choices: yesNo, applies: ({ style }) => style !== "realistic" },
+  {
+    id: "hat",
+    label: "Chapéu",
+    // One thing on the head at a time. Realista people wear MakeHuman's cap and fedora, and no
+    // child wears a fedora.
+    choices: (style, options) =>
+      [
+        { id: "none", label: "Nenhum" },
+        { id: "cap", label: "Boné" },
+        ...(style === "realistic"
+          ? options?.age === "child"
+            ? []
+            : [{ id: "fedora", label: "Fedora" }]
+          : [
+              { id: "beanie", label: "Gorro" },
+              { id: "top", label: "Cartola" },
+              { id: "cowboy", label: "Caubói" },
+            ]),
+      ],
+  },
+  { id: "backpack", label: "Mochila", choices: yesNo },
 ];
 
 const SERVICE_KINDS = ["taxi", "police", "ambulance", "firetruck"];

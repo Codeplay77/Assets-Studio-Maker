@@ -1,3 +1,4 @@
+import { hasBlock } from "../blocks/catalog";
 import type { ArtStyle } from "../blocks/styles";
 import type { Vec3 } from "../core/types";
 import type { AssembledPart, Assembler } from "./assembler";
@@ -136,6 +137,7 @@ export interface PersonOptions {
   outfit?: string;
   beard?: string;
   glasses?: string;
+  /** "none", or which hat: "cap", "beanie", "top" and "cowboy", or "fedora" for Realista. */
   hat?: string;
   backpack?: string;
 }
@@ -323,7 +325,9 @@ export function buildPerson(asm: Assembler, rng: Rng, options: PersonOptions = {
   leg("right");
 
   if (decide(options.backpack, rng.fork("backpack"), 0.14)) {
-    asm.attach(torso, "back", `${kit.hair}.backpack`, { color: rng.fork("backpack color").pick(CLOTH), scale: width });
+    // Made to the torso's measures: it takes the torso's scale, and a woman's torso has its own.
+    const bag = `${kit.hair}.backpack${feminineBody && hasBlock(`${kit.hair}.backpack_f`) ? "_f" : ""}`;
+    asm.attach(torso, "back", bag, { color: rng.fork("backpack color").pick(CLOTH), scale: trunk });
   }
 
   asm.dropTo(foot, "sole", options.position?.[1] ?? 0);
@@ -379,9 +383,9 @@ function buildHead(
   }
 
   const hair = HAIR_STYLES[hairGroup];
-  if (decide(options.hat, rng.fork("hat"), child ? 0.14 : 0.2)) {
-    const hats = child ? ["cap", "beanie"] : kit.hats;
-    asm.attach(head, "top", `${kit.hair}.hat_${rng.fork("hat kind").pick(hats)}`, { scale });
+  const kind = hatOf(options, rng, kit, child);
+  if (kind) {
+    asm.attach(head, "top", `${kit.hair}.hat_${kind}`, { scale });
     if (hairGroup !== "bald") {
       const under = hairGroup === "long" || hairGroup === "tied" ? "under_long" : "under_short";
       asm.attach(head, "top", `${kit.hair}.${under}`, { color: hairColor, scale });
@@ -389,6 +393,18 @@ function buildHead(
   } else if (hair.length > 0) {
     asm.attach(head, "top", `${kit.hair}.${rng.fork("hair kind").pick(hair)}`, { color: hairColor, scale });
   }
+}
+
+const HATS = ["cap", "beanie", "top", "cowboy"];
+
+/** The hat chosen, or one by chance; children's are a cap or a beanie. "yes" and "no" are older choices. */
+function hatOf(options: PersonOptions, rng: Rng, kit: PersonKit, child: boolean): string | undefined {
+  const wanted = chosen(options.hat);
+  if (wanted === "none" || wanted === "no") return undefined;
+  if (wanted && HATS.includes(wanted)) return wanted;
+  if (wanted === "fedora") return "cowboy";
+  if (!wanted && !rng.fork("hat").chance(child ? 0.14 : 0.2)) return undefined;
+  return rng.fork("hat kind").pick(child ? ["cap", "beanie"] : kit.hats);
 }
 
 function resolveHairColor(options: PersonOptions, rng: Rng, age: Age): string {

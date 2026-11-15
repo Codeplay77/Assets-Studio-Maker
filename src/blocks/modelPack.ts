@@ -20,7 +20,7 @@ let vehiclePack: DataView | null = null;
 let realisticPack: DataView | null = null;
 let peoplePack: DataView | null = null;
 
-/** The pack of ready-made models: `models` for the city kits, `interior` for furniture. */
+/** The pack of ready-made models: `models` for the city kits, `interior` for furniture, `armas` for weapons. */
 export function setModelPack(buffer: ArrayBuffer, name: ModelPackName = "models"): void {
   packs[name] = new DataView(buffer);
 }
@@ -45,15 +45,17 @@ async function fetchPack(url: string): Promise<ArrayBuffer> {
 
 /** Must finish before any block is built, so the catalog can stay synchronous. */
 export async function loadModelPack(): Promise<void> {
-  const [models, interior, vehicles, realistic, people] = await Promise.all([
+  const [models, interior, weapons, vehicles, realistic, people] = await Promise.all([
     fetchPack("/models/pack.bin"),
     fetchPack("/models/interior.bin"),
+    fetchPack("/models/armas.bin"),
     fetchPack("/models/vehicles.bin"),
     fetchPack("/models/realista.bin"),
     fetchPack("/models/pessoas.bin"),
   ]);
   setModelPack(models);
   setModelPack(interior, "interior");
+  setModelPack(weapons, "armas");
   setVehiclePack(vehicles);
   setRealisticPack(realistic);
   setPeoplePack(people);

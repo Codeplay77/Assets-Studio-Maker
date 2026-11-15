@@ -990,6 +990,8 @@ export class EditorViewport {
     if (!this.placing || !this.pointerInside) return null;
     const def = getBlock(this.placing.block);
     const base = def.sockets[0];
+    // What is held in a hand attaches by its grip, but stands on its bottom on the floor.
+    const standing = base.id === "grip" ? (def.sockets.find((socket) => socket.id === "bottom") ?? base) : base;
     const grid = def.snap ?? PLACEMENT_GRID;
     const hit = def.ground ? undefined : this.pick();
     if (def.ground) this.raycaster.setFromCamera(this.pointer, this.camera);
@@ -998,7 +1000,7 @@ export class EditorViewport {
       this.showMarkers([], null);
       const normal = worldNormal(hit.face.normal, hit.object.matrixWorld);
       if (normal.y > MIN_UPWARD_NORMAL) {
-        return alignToSurface(base, snapOnPlane(hit.point, UP, grid), UP, this.yawSteps);
+        return alignToSurface(standing, snapOnPlane(hit.point, UP, grid), UP, this.yawSteps);
       }
     } else if (hit?.face) {
       const sockets = worldSockets(getBlock(hit.object.userData.block).sockets, hit.object.matrixWorld);
@@ -1006,13 +1008,13 @@ export class EditorViewport {
       this.showMarkers(sockets, nearest);
       if (nearest) return alignToSurface(base, nearest.position, nearest.normal, this.yawSteps);
       const normal = worldNormal(hit.face.normal, hit.object.matrixWorld);
-      return alignToSurface(base, snapOnPlane(hit.point, normal, grid), normal, this.yawSteps);
+      return alignToSurface(standing, snapOnPlane(hit.point, normal, grid), normal, this.yawSteps);
     }
 
     this.showMarkers([], null);
     const point = this.raycaster.ray.intersectPlane(this.ground, new THREE.Vector3());
     if (!point) return null;
-    return alignToSurface(base, snapOnPlane(point, UP, grid), UP, this.yawSteps);
+    return alignToSurface(standing, snapOnPlane(point, UP, grid), UP, this.yawSteps);
   }
 
   private showMarkers(sockets: WorldSocket[], active: WorldSocket | null): void {

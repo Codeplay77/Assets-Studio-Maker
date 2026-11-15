@@ -14,6 +14,8 @@ import { natureBlocks } from "./nature.ts";
 import { roadBlocks } from "./roads.ts";
 import { arcadeFromLowPoly, arcadeFromRealistic } from "./styleize.ts";
 import { voxelBlocks } from "./voxel.ts";
+import { weaponModelBlocks } from "./weapons.generated.ts";
+import { lowPolyWeaponBlocks, realisticWeaponBlocks, voxelWeaponBlocks } from "./weapons.ts";
 
 export const categories: BlockCategory[] = [
   { id: "lib_vehicles", name: "Veículos", group: "library" },
@@ -22,6 +24,7 @@ export const categories: BlockCategory[] = [
   { id: "lib_roads", name: "Ruas", group: "library" },
   { id: "lib_nature", name: "Natureza", group: "library" },
   { id: "lib_people", name: "Personagens", group: "library" },
+  { id: "lib_weapons", name: "Armas", group: "library" },
 
   { id: "body", name: "Corpo", group: "parts" },
   { id: "face", name: "Rosto", group: "parts" },
@@ -42,6 +45,7 @@ const arcadeRoads = [...roadBlocks, ...cityBlocks, ...natureBlocks].filter((bloc
 const arcadeFamily: BlockDef[] = [
   ...homeBlocks,
   ...lowPolyBlocks.map(arcadeFromLowPoly),
+  ...lowPolyWeaponBlocks.map(arcadeFromLowPoly),
   ...arcadeRoads.map(arcadeFromRealistic),
 ];
 
@@ -64,6 +68,10 @@ export const blocks: BlockDef[] = [
   ...interiorBlocks,
   ...libraryModels,
   ...interiorModelBlocks,
+  ...weaponModelBlocks,
+  ...lowPolyWeaponBlocks,
+  ...voxelWeaponBlocks,
+  ...realisticWeaponBlocks,
   ...realisticModelBlocks,
   ...peopleBlocks,
 ];

@@ -20,6 +20,8 @@ interface PreparedPiece {
   surface: string;
   /** Follows the part's color. */
   tint: boolean;
+  /** The color of a piece that does not follow the part's, like a backpack's straps. */
+  color?: string;
   vertices: number;
   indices: number;
   offset: number;
@@ -85,6 +87,8 @@ function label(id: string): string {
   if (kind === "cima") return `${person}: roupa de cima (${OUTFITS[which] ?? which})`;
   if (kind === "baixo") return `${person}: roupa de baixo e sapatos (${OUTFITS[which] ?? which})`;
   if (kind === "cabelo") return `${person}: cabelo ${HAIRS[which] ?? which}`;
+  if (kind === "bone") return `${person}: boné`;
+  if (kind === "mochila") return `${person}: mochila`;
   return `${person}: chapéu`;
 }
 
@@ -196,18 +200,29 @@ for (const id of ids) {
       min[axis] = Math.min(min[axis], bounds.min[axis]);
       max[axis] = Math.max(max[axis], bounds.max[axis]);
     }
-    return { shape, surface: piece.surface, ...(piece.tint ? {} : { color: "#ffffff" }) };
+    return { shape, surface: piece.surface, ...(piece.tint ? {} : { color: piece.color ?? "#ffffff" }) };
   });
   const body = id.split(".")[3].startsWith("corpo_");
   const joint = (name: number) => mesh.skeleton.joints[name].map(round);
+  /**
+   * Inside the closed hand, where a handle goes: most of the way from the wrist to the knuckles of
+   * the middle finger, toward the palm (the hands hang with their palms to the thighs). Its normal
+   * points the thumb's way, forward and a little up as the hands hang: what is held there (a
+   * weapon's grip, see scripts/import-weapons.ts) then aims along the arm in the clips.
+   */
+  const grip = (hand: number, knuckle: number, side: 1 | -1) => {
+    const wrist = mesh.skeleton.joints[hand];
+    const base = mesh.skeleton.joints[knuckle] ?? wrist;
+    return [0, 1, 2].map((axis) => round(wrist[axis] + (base[axis] - wrist[axis]) * 0.7 - (axis === 0 ? side * 0.02 : 0)));
+  };
   const sockets = [
     { id: "bottom", p: [0, 0, 0], n: [0, -1, 0] },
     ...(body
       ? [
           { id: "top", p: [round((min[0] + max[0]) / 2), round(max[1]), joint(5)[2]], n: [0, 1, 0] },
           // The hands, where something held goes.
-          { id: "grip_left", p: joint(9), n: [1, 0, 0] },
-          { id: "grip_right", p: joint(13), n: [-1, 0, 0] },
+          { id: "grip_left", p: grip(9, 28, 1), n: [-0.28, 0.52, 0.81] },
+          { id: "grip_right", p: grip(13, 43, -1), n: [0.28, 0.52, 0.81] },
         ]
       : []),
   ];

@@ -2,8 +2,10 @@
 // piece is mounted. `w` hangs on a wall (its back touches it) and `c` hangs from the ceiling;
 // everything else stands on the floor.
 
+import type { WeaponName } from "./weapon-names.ts";
+
 export type Mount = "floor" | "w" | "c";
-export type RealisticCategory = "lib_interior" | "lib_nature" | "lib_city";
+export type RealisticCategory = "lib_interior" | "lib_nature" | "lib_city" | "lib_weapons";
 
 export interface RealisticModel {
   label: string;
@@ -16,7 +18,16 @@ export interface RealisticModel {
    * instead of one block with all of them.
    */
   variants?: boolean;
+  /**
+   * Held in a hand: how it stands in the library and where the hand holds it, as the other styles'
+   * weapons (see scripts/weapon-names.ts). Its first socket is then the grip.
+   */
+  held?: Held;
+  /** For a file of several versions: the name of each, and how it is held, when they differ. */
+  parts?: { label: string; held?: Held }[];
 }
+
+export type Held = Pick<WeaponName, "hold" | "grip" | "turn" | "front">;
 
 const interior = (label: string, mount?: Mount, scale?: number): RealisticModel => ({
   label,
@@ -28,6 +39,7 @@ const interior = (label: string, mount?: Mount, scale?: number): RealisticModel 
 const versions = (model: RealisticModel): RealisticModel => ({ ...model, variants: true });
 const nature = (label: string): RealisticModel => ({ label, category: "lib_nature" });
 const city = (label: string, mount?: Mount): RealisticModel => ({ label, category: "lib_city", ...(mount ? { mount } : {}) });
+const weapon = (label: string, held?: RealisticModel["held"]): RealisticModel => ({ label, category: "lib_weapons", ...(held ? { held } : {}) });
 
 export const REALISTIC_MODELS: Record<string, RealisticModel> = {
   alarm_clock_01: interior("Despertador"),
@@ -178,4 +190,33 @@ export const REALISTIC_MODELS: Record<string, RealisticModel> = {
   utility_box_01: city("Caixa de energia"),
   water_manhole_cover: city("Tampa de bueiro"),
   wooden_picnic_table: city("Mesa de piquenique"),
+
+  ammo_box: weapon("Caixa de munição"),
+  antique_estoc: weapon("Estoque antigo", { hold: "blade", turn: [["y", 90]] }),
+  antique_katana_01: weapon("Catana antiga", { hold: "blade" }),
+  bolt_action_rifle_7_62: weapon("Fuzil de ferrolho", { hold: "gun", grip: 0.3, turn: [["y", -90]] }),
+  cannon_01: weapon("Canhão antigo"),
+  fish_knife: weapon("Faca de pesca", { hold: "pole", grip: 0.22 }),
+  hatchet: weapon("Machadinha", { hold: "pole", grip: 0.25 }),
+  katana_stand_01: weapon("Suporte de catana"),
+  kite_shield: weapon("Escudo", { hold: "thing" }),
+  machete: weapon("Facão", { hold: "pole", grip: 0.12 }),
+  old_military_crate: weapon("Caixote militar"),
+  ornate_medieval_dagger: weapon("Adaga medieval", { hold: "blade", turn: [["y", 90]] }),
+  ornate_medieval_mace: weapon("Maça medieval", { hold: "pole", grip: 0.2 }),
+  ornate_war_hammer: weapon("Martelo de guerra", { hold: "pole", grip: 0.2, turn: [["y", 90]] }),
+  // The file lays out two pistols and their magazines.
+  service_pistol: {
+    ...versions(weapon("Pistola", { hold: "gun", grip: 0.2, turn: [["y", -90]] })),
+    parts: [
+      { label: "Pistola", held: { hold: "gun", grip: 0.2, turn: [["y", -90]] } },
+      { label: "Pistola com o ferrolho aberto", held: { hold: "gun", grip: 0.2, turn: [["y", -90]] } },
+      { label: "Carregador de pistola", held: { hold: "thing" } },
+      { label: "Carregador de pistola cheio", held: { hold: "thing" } },
+    ],
+  },
+  stick_grenade: weapon("Granada de cabo", { hold: "pole", grip: 0.2 }),
+  wooden_axe: weapon("Machado", { hold: "pole", grip: 0.25 }),
+  wooden_axe_02: weapon("Machado de lenhador", { hold: "pole", grip: 0.25 }),
+  wooden_handle_saber: weapon("Sabre", { hold: "blade" }),
 };

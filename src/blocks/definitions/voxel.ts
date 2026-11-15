@@ -161,11 +161,48 @@ const hairSides = (height: number, depth = 8.7, z = 0) =>
   pair((side) => [u([0.8, height, depth], [side * 4.05, 0.4 - height / 2, z])]);
 const fringe = () => u([8.7, 1.1, 0.6], [0, -0.85, 4.05]);
 
-const HAND_SOCKETS = [socket("wrist", [0, 0, 0], [0, 1, 0]), socket("grip", p(0, -1, 1.8), [0, 0, 1])];
+/**
+ * Hair worn under a hat stops below the hat's band and a little inside its sides, so the two never
+ * share a face and flicker. `bottom` is how far down it hangs.
+ */
+const UNDER_HAT = -0.35;
+const underBack = (bottom: number) => u([8.7, UNDER_HAT - bottom, 1], [0, (UNDER_HAT + bottom) / 2, -3.85]);
+const underSides = (bottom: number, depth = 8.7, z = 0) =>
+  pair((side) => [u([0.75, UNDER_HAT - bottom, depth], [side * 4.025, (UNDER_HAT + bottom) / 2, z])]);
+
+/**
+ * The grip is low in the fist, nearly under the wrist as in the Low poly hand: the skeleton points
+ * the hand bone at it, so the hand turns as the clips' hands do. It points the thumb's way: what
+ * is held there (a weapon's grip, see scripts/import-weapons.ts) then aims along the arm.
+ */
+const handSockets = (side: 1 | -1) => [socket("wrist", [0, 0, 0], [0, 1, 0]), socket("grip", p(0, -1.6, 0.36), [side * 0.93, -0.37, 0.03])];
 const hand = (id: string, name: string, side: 1 | -1) =>
-  body(id, name, SKIN, [u([3.6, 1.8, 3.6], [0, -0.9, 0]), u([1, 1.1, 1.3], [side * 2.2, -0.9, 0.2])], HAND_SOCKETS);
+  body(id, name, SKIN, [u([3.6, 1.8, 3.6], [0, -0.9, 0]), u([1, 1.1, 1.3], [side * 2.2, -0.9, 0.2])], handSockets(side));
 
 const SOLE = [socket("ankle", [0, 0, 0], [0, 1, 0]), socket("sole", p(0, -1.8, 0.8), [0, -1, 0])];
+
+/**
+ * A backpack flat on the back, its straps down the chest and over the shoulders, on top of them. A
+ * woman's torso is not as deep below the chest, so her bag reaches a little further in, and her
+ * straps go over the bust.
+ */
+function backpack(build: Build): BlockDef {
+  const female = build.suffix === "_f";
+  // The back socket is 5.5 units up the torso and 2 behind its middle; the torso is 10 tall.
+  const straps = pair((side) => [
+    female ? u([0.9, 5.6, 0.4], [side * 2.2, 1.7, 4.2], { shade: 0.65 }) : u([0.9, 7.8, 0.4], [side * 2.2, 0.6, 4.2], { shade: 0.65 }),
+    ...(female ? [u([0.9, 2.2, 0.4], [side * 2.2, 1.4, 4.8], { shade: 0.65 })] : []),
+    u([0.9, 0.5, 4.8], [side * 2.2, 4.75, 2], { shade: 0.65 }),
+  ]);
+  return block(
+    `vx.backpack${build.suffix}`,
+    female ? "Mochila (fem.)" : "Mochila",
+    "hair",
+    "#c9772b",
+    compound(female ? u([6.8, 8.4, 3], [0, -0.6, -1.3]) : u([6.8, 8.4, 2.8], [0, -0.6, -1.4]), u([5, 3.4, 0.8], [0, -2.4, -3.2], { shade: 0.8 }), ...straps),
+    [socket("back", [0, 0, 0], [0, 0, 1])],
+  );
+}
 
 export const voxelPersonBlocks: BlockDef[] = [
   hips("hips", "Quadril", 8, 2),
@@ -279,26 +316,16 @@ export const voxelPersonBlocks: BlockDef[] = [
     ].flatMap(([x, z], index) => [u([2.1, 1.6, 2.1], [x, 1.6, z]), u([1.1, 1.3 + (index % 2) * 0.6, 1.1], [x, 3 + (index % 2) * 0.3, z])]),
   ]),
   hair("mohawk", "Moicano", [u([1.9, 2.4, 9.4], [0, 1, -0.2]), u([1.4, 1.6, 9], [0, 2.8, -0.2]), u([1.9, 4, 1.2], [0, -2, -4.5])]),
-  hair("under_short", "Cabelo sob chapéu", [hairBack(4), ...hairSides(2.8)]),
-  hair("under_long", "Cabelo longo sob chapéu", [hairBack(14), ...hairSides(12, 6, -1.4)]),
+  hair("under_short", "Cabelo sob chapéu", [underBack(-3.6), ...underSides(-2.4)]),
+  hair("under_long", "Cabelo longo sob chapéu", [underBack(-13.6), ...underSides(-11.6, 6, -1.4)]),
 
   hat("cap", "Boné", "#c23b3b", [u([8.9, 2.8, 8.9], [0, 0.9, 0]), u([8.9, 0.6, 4.2], [0, -0.3, 6.1], { shade: 0.8 })]),
   hat("beanie", "Touca", "#3a7d6b", [u([8.9, 3.4, 8.9], [0, 1.4, 0]), u([9.3, 1.5, 9.3], [0, -1, 0], { shade: 0.8 })]),
   hat("top", "Cartola", "#22242c", [u([7, 6.4, 7], [0, 3.6, 0], { finish: "gloss" }), u([11.4, 0.7, 11.4], [0, 0.2, 0], { finish: "gloss" }), u([7.3, 1, 7.3], [0, 1.2, 0], { color: "#8f2a2e" })]),
   hat("cowboy", "Chapéu de caubói", "#8a5a30", [u([7.6, 3.2, 8.4], [0, 2, 0]), u([14, 0.7, 13.4], [0, 0.2, 0]), u([7.9, 0.9, 8.7], [0, 0.9, 0], { color: "#3a2a1e" })]),
 
-  block(
-    "vx.backpack",
-    "Mochila",
-    "hair",
-    "#c9772b",
-    compound(
-      u([6.8, 8.4, 2.8], [0, -0.6, -1.4]),
-      u([5, 3.4, 0.8], [0, -2.4, -3.2], { shade: 0.8 }),
-      ...pair((side) => [u([0.9, 7, 0.4], [side * 2.2, 0.2, 4.2], { shade: 0.65 }), u([0.9, 0.5, 4.6], [side * 2.2, 3.5, 2])]),
-    ),
-    [socket("back", [0, 0, 0], [0, 0, 1])],
-  ),
+  backpack(MALE),
+  backpack(FEMALE),
 ];
 
 // --- buildings ----------------------------------------------------------------------------

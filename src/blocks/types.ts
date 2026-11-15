@@ -24,7 +24,7 @@ export interface BodyDeform {
   taperTo?: number;
 }
 
-export type ModelPackName = "models" | "interior";
+export type ModelPackName = "models" | "interior" | "armas";
 
 export type Finish = "matte" | "gloss" | "metal" | "glass" | "glow";
 
@@ -54,7 +54,8 @@ export type Primitive =
   | { kind: "lumpy"; radius: number; detail: number; amount: number; seed: number; frequency?: number }
   /**
    * An imported model, stored in the model pack (see scripts/import-models.ts) or, with
-   * `pack: "interior"`, in the furniture pack (see scripts/import-interior.ts).
+   * `pack: "interior"`, in the furniture pack (see scripts/import-interior.ts), or with
+   * `pack: "armas"`, in the weapons pack (see scripts/import-weapons.ts).
    */
   | { kind: "model"; model: string; pack?: ModelPackName; offset: number; vertices: number; min: Vec3; max: Vec3 }
   /** A zone of a model made in Blender, stored in the vehicle pack (see tools/blender/). */

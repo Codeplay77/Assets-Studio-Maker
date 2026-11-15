@@ -88,15 +88,23 @@ def update():
     bpy.context.view_layer.update()
 
 
-def reset_pose(fingers=None):
-    """Every bone at rest, but the fingers, closed as much as asked: (left, right) or both `hands`."""
+def reset_pose(fingers=None, point=None):
+    """
+    Every bone at rest, but the fingers, closed as much as asked: (left, right) or both `hands`; and
+    `point`, (left, right), how straight each index finger stays while the others close.
+    """
     for pb in arm.pose.bones:
         pb.location = (0, 0, 0)
         pb.rotation_quaternion = (1, 0, 0, 0)
         pb.scale = (1, 1, 1)
     left, right = fingers if fingers is not None else (hands, hands)
+    point_left, point_right = point if point is not None else (0.0, 0.0)
     for name, rotation in CLOSED.items():
-        arm.pose.bones[name].rotation_quaternion = Quaternion().slerp(rotation, left if name.endswith("_l") else right)
+        on_left = name.endswith("_l")
+        amount = left if on_left else right
+        if name.startswith("index"):
+            amount *= 1.0 - (point_left if on_left else point_right)
+        arm.pose.bones[name].rotation_quaternion = Quaternion().slerp(rotation, amount)
     update()
 
 
@@ -212,8 +220,10 @@ BASE = {
     "knee": 0.0,
     "kl": None,
     "kr": None,
-    # How closed each hand is, 0 flat to 1 closed; None leaves both at `hands`.
+    # How closed each hand is, 0 flat to 1 closed; None leaves both at `hands`. And how straight each
+    # index finger stays, to point.
     "fing": None,
+    "point": None,
 }
 
 
@@ -237,6 +247,7 @@ def mirror(pose):
     if "kw" in pose:
         out["kw"] = swap(pose["kw"])
     out["fing"] = swap(pose.get("fing"))
+    out["point"] = swap(pose.get("point"))
     return out
 
 
@@ -279,7 +290,7 @@ def place_foot(side, spec):
 
 
 def apply(pose):
-    reset_pose(pose.get("fing"))
+    reset_pose(pose.get("fing"), pose.get("point"))
     hx, hy, hz = pose["hips"]
     move("pelvis", C(hx, hy, hz))
     turn("pelvis", R(*pose["hipr"]))

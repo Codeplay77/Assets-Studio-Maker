@@ -27,9 +27,20 @@ function piecesOf(shape: BlockShape): ShapePiece[] {
   return shape.kind === "compound" ? shape.pieces : [{ shape }];
 }
 
+/** Low poly pieces that Arcade draws from a finer shape of their own instead of smoothing them. */
+const finerShapes = new WeakMap<Primitive, Primitive>();
+
+/** Gives a low poly piece the shape its Arcade version is drawn with. */
+export function withFinerShape(piece: ShapePiece, finer: Primitive): ShapePiece {
+  finerShapes.set(piece.shape, finer);
+  return piece;
+}
+
 function smoothPiece(piece: ShapePiece): ShapePiece {
   const { shape, faceted: _faceted, ...rest } = piece;
   const out = (next: Primitive): ShapePiece => ({ ...rest, shape: next });
+  const finer = finerShapes.get(shape);
+  if (finer) return out(finer);
   switch (shape.kind) {
     case "loft":
       return out({ ...shape, segments: 24, steps: 3 });

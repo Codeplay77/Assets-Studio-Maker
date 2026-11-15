@@ -5,8 +5,9 @@ import type { Rng } from "./rng";
 
 // The Realista person is a MakeHuman body (see tools/blender/make_people.py) that bends with its
 // skeleton instead of being built from blocks. It comes as a few blocks standing on the same spot:
-// the body, what it wears on top, what it wears below with the shoes, the hair and maybe a hat. The
-// body takes the skin color, each piece of clothing its own color, and the hair the hair color.
+// the body, what it wears on top, what it wears below with the shoes, the hair and maybe a cap or a
+// hat and a backpack. The body takes the skin color, each piece of clothing its own color, and the
+// hair the hair color.
 
 const PREFIX = "rz.pessoa";
 
@@ -72,6 +73,19 @@ function likelyHair(sex: Sex, age: Age, rng: Rng): string {
   return rng.pick(age === "child" ? ["tied", "long", "bob", "curly"] : ["long", "long", "bob", "tied", "tied", "curly"]);
 }
 
+/**
+ * Hair that does not fit under a cap or the fedora, and what is worn instead with one: an afro goes
+ * under neither, and the full bob not under the stiff fedora (see NO_CAP and NO_HAT in
+ * tools/blender/make_people.py).
+ */
+const AFRO_INSTEAD = { male: "short01", female: "ponytail01" };
+const HATLESS: Record<"bone" | "chapeu", Record<string, { male: string; female: string }>> = {
+  bone: { afro01: AFRO_INSTEAD },
+  chapeu: { afro01: AFRO_INSTEAD, bob01: { male: "short03", female: "bob02" } },
+};
+const CAPS = ["#c23b3b", "#2c3142", "#3f6fb5", "#e8e4d8", "#1e1f22", "#3a7d6b", "#d9a62e"];
+const BACKPACKS = ["#2c3142", "#3f6fb5", "#b8423c", "#3a7d6b", "#55585e", "#d9a62e", "#7a3fd1", "#1e1f22"];
+
 const HEIGHTS: Record<string, number> = { short: 0.95, medium: 1, tall: 1.05 };
 const chosen = (value: string | undefined) => (value && value !== "any" ? value : undefined);
 
@@ -101,13 +115,35 @@ export function buildRealPerson(asm: Assembler, rng: Rng, options: PersonOptions
 
   const group = chosen(options.hair) ?? likelyHair(sex, age, rng.fork("hair"));
   const hairs = HAIRS[group]?.[sex] ?? HAIRS.short[sex];
-  const hatChoice = chosen(options.hat);
-  const hat = age !== "child" && (hatChoice ? hatChoice === "yes" : rng.fork("hat").chance(0.08)) && hasBlock(`${PREFIX}.${body}.chapeu`);
+  const worn = hatOf(chosen(options.hat), rng, age);
+  const cap = worn === "bone" && hasBlock(`${PREFIX}.${body}.bone`);
+  const hat = worn === "chapeu" && hasBlock(`${PREFIX}.${body}.chapeu`);
   if (hairs.length > 0) {
-    const hair = rng.fork("hair kind").pick(hairs);
+    let hair = rng.fork("hair kind").pick(hairs);
+    const on = cap ? "bone" : hat ? "chapeu" : undefined;
+    const instead = on && HATLESS[on][hair]?.[sex];
+    if (instead && hasBlock(`${PREFIX}.${body}.cabelo_${instead}`)) hair = instead;
     place(`cabelo_${hair}`, hairColorOf(options, rng.fork("hair color"), age));
   }
+  if (cap) place("bone", rng.fork("cap color").pick(CAPS));
   if (hat) place("chapeu", rng.fork("hat color").pick(["#5b5f63", "#3b3631", "#8a7a62", "#2c3142"]));
+  const backpackChoice = chosen(options.backpack);
+  const backpack = backpackChoice ? backpackChoice === "yes" : rng.fork("backpack").chance(age === "child" ? 0.2 : 0.1);
+  if (backpack && hasBlock(`${PREFIX}.${body}.mochila`)) place("mochila", rng.fork("backpack color").pick(BACKPACKS));
+}
+
+/**
+ * The block worn on the head: the cap ("bone") or the fedora ("chapeu"), as chosen or by chance. The
+ * other styles' hats ask for the closest one here, and a child gets a cap instead of a fedora.
+ */
+function hatOf(wanted: string | undefined, rng: Rng, age: Age): "bone" | "chapeu" | undefined {
+  const child = age === "child";
+  if (wanted === "none" || wanted === "no") return undefined;
+  if (wanted === "cap" || wanted === "beanie") return "bone";
+  if (wanted === "fedora" || wanted === "top" || wanted === "cowboy") return child ? "bone" : "chapeu";
+  if (wanted === "yes") return child || rng.fork("hat kind").chance(0.5) ? "bone" : "chapeu";
+  if (rng.fork("cap").chance(child ? 0.12 : 0.08)) return "bone";
+  return !child && rng.fork("hat").chance(0.08) ? "chapeu" : undefined;
 }
 
 function hairColorOf(options: PersonOptions, rng: Rng, age: Age): string {
